@@ -2,6 +2,7 @@ use crate::policy::RolloutPolicy;
 use crate::reward::Reward;
 use crate::{action::Action, state::State};
 
+#[derive(Clone)]
 struct Node {
     parent: Option<Box<Node>>,
     children: Vec<Node>,
@@ -52,9 +53,7 @@ impl Node {
             }
 
             let chosen_index = self.uct_best_child(1.4);
-            self = self
-                .children
-                .get_mut(chosen_index)?;
+            self = self.children.get_mut(chosen_index)?;
         }
 
         return Some(self);
@@ -101,12 +100,16 @@ impl Node {
             return Option::None;
         }
 
-        let current = self;
+        let current = self.clone();
         let action = action_option.unwrap();
         let new_state = action.apply_to(&self.state);
-        let expanded_child = Node::new(current, new_state, action_option);
+        let expanded_child = Node::new(
+            Option::Some(Box::new(current)),
+            new_state,
+            Option::Some(action),
+        );
         self.children.push(expanded_child);
-        return Option::Some(&mut expanded_child);
+        return self.children.last_mut();
     }
 
     fn is_root(&self) -> bool {

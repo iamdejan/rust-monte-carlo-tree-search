@@ -15,7 +15,10 @@ fn main() {
 
     let initial_state: Box<dyn State> = initial_state.clone();
     let new_state = chosen_action.apply_to(&initial_state);
-    println!("New state's position: {:#?}", new_state.get_current_position());
+    println!(
+        "New state's position: {:#?}",
+        new_state.get_current_position()
+    );
     println!("Goal state: {:#?}", GridWorldState::GOAL_CELL);
     println!("Penalty state: {:#?}", GridWorldState::PENALTY_CELL);
 }

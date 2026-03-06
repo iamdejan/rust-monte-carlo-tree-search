@@ -3,7 +3,7 @@ use crate::position::Position;
 use crate::reward::Reward;
 use crate::state::State;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum GridWorldAction {
     Up,
     Down,
@@ -48,6 +48,10 @@ impl Action for GridWorldAction {
 
     fn get_name(&self) -> &'static str {
         return self.name();
+    }
+
+    fn clone_box(&self) -> Box<dyn Action> {
+        return Box::new(self.clone());
     }
 }
 
