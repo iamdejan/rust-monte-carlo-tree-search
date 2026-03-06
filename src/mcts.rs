@@ -64,7 +64,7 @@ impl Node {
         while !current_state.is_game_ended() {
             let action_option = policy(current_state.as_mut());
             if let Some(action) = action_option {
-                current_state = action.apply_to(&current_state);
+                current_state = action.apply_to(current_state.as_ref());
             }
         }
 
@@ -90,19 +90,15 @@ impl Node {
         return self.untried_actions.is_empty();
     }
 
-    fn remove_first_untried_action(&mut self) -> Option<Box<dyn Action>> {
-        return Some(self.untried_actions.remove(0));
+    fn remove_first_untried_action(&mut self) -> Box<dyn Action> {
+        return self.untried_actions.remove(0);
     }
 
     fn expand(&mut self) -> Option<&mut Self> {
-        let action_option = self.remove_first_untried_action();
-        if action_option.is_none() {
-            return Option::None;
-        }
+        let action = self.remove_first_untried_action();
 
         let current = self.clone();
-        let action = action_option.unwrap();
-        let new_state = action.apply_to(&self.state);
+        let new_state = action.apply_to(self.state.as_ref());
         let expanded_child = Node::new(
             Option::Some(Box::new(current)),
             new_state,

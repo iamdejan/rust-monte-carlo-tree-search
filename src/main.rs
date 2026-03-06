@@ -13,7 +13,7 @@ fn main() {
     let chosen_action = mcts::search(initial_state.clone(), policy::default, 100);
     println!("{}", chosen_action.get_name());
 
-    let new_state = chosen_action.apply_to(&initial_state);
+    let new_state = chosen_action.apply_to(initial_state.as_ref());
     println!(
         "New state's position: {:#?}",
         new_state.get_current_position()
@@ -79,7 +79,7 @@ mod tests {
         let actions = state.get_legal_actions();
 
         if let Some(action) = actions.first() {
-            let new_state = action.as_ref().apply_to(&state);
+            let new_state = action.as_ref().apply_to(state.as_ref());
             assert_eq!(new_state.get_current_position(), Position { r: 1, c: 0 });
         } else {
             panic!("action should exist");

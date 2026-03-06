@@ -36,7 +36,7 @@ impl GridWorldAction {
 }
 
 impl Action for GridWorldAction {
-    fn apply_to(&self, state: &Box<dyn State>) -> Box<dyn State> {
+    fn apply_to(&self, state: &dyn State) -> Box<dyn State> {
         let current_position = state.get_current_position();
         let delta = self.delta();
         let new_position = current_position.add(delta);
