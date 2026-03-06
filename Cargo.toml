@@ -3,4 +3,15 @@ name = "rust-monte-carlo-tree-search"
 version = "0.1.0"
 edition = "2024"
 
+[lints.rust]
+warnings = "deny"
+dead-code = "forbid"
+
+[lints.clippy]
+needless_return = "allow"
+implicit_return = "forbid"
+pedantic = { level = "deny", priority = -1 }
+print_stdout = "allow"
+trivially_copy_pass_by_ref = "allow"
+
 [dependencies]
