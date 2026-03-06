@@ -1,38 +1,12 @@
-type Reward = f64;
+mod position;
+mod action;
+mod state;
+mod reward;
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-struct Position {
-    r: i8,
-    c: i8,
-}
-
-impl Position {
-    fn to_usize(self) -> (usize, usize) {
-        return (
-            usize::try_from(self.r).expect("self.r should be >= 0"),
-            usize::try_from(self.c).expect("self.c should be >= 0"),
-        );
-    }
-
-    const fn add(&self, other: Self) -> Self {
-        let new_r = self.r + other.r;
-        let new_c = self.c + other.c;
-        return Self { r: new_r, c: new_c };
-    }
-}
-
-trait Action {
-    fn apply_to(&self, state: &mut dyn State);
-    fn get_name(&self) -> &'static str;
-}
-
-trait State {
-    fn get_current_position(&self) -> Position;
-    fn update_current_position(&mut self, new_position: Position);
-    fn evaluate(&self) -> Reward;
-    fn get_legal_actions(&self) -> Vec<Box<dyn Action>>;
-    fn is_game_ended(&self) -> bool;
-}
+use crate::position::Position;
+use crate::action::Action;
+use crate::state::State;
+use crate::reward::Reward;
 
 #[derive(Debug)]
 enum GridWorldAction {
@@ -55,7 +29,7 @@ impl GridWorldAction {
     /// Returns the name of the action as a string slice.
     ///
     /// # Returns
-    /// * `&str` - The name of the action variant (e.g., "Up", "Down", "Left", "Right")
+    /// * `&'static str` - The name of the action variant (e.g., "Up", "Down", "Left", "Right")
     const fn name(&self) -> &'static str {
         match self {
             Self::Up => return "Up",
@@ -221,5 +195,21 @@ mod tests {
     fn test_grid_action_right_delta() {
         let action = GridWorldAction::Right;
         assert_eq!(action.delta(), Position { r: 0, c: 1 });
+    }
+
+    #[test]
+    fn test_grid_world_state_get_current_position() {
+        let state = GridWorldState::new();
+        let current_position = state.get_current_position();
+        assert_eq!(current_position, Position{r: 0, c: 0})
+    }
+
+    #[test]
+    fn test_grid_world_state_get_legal_actions() {
+        let state = GridWorldState::new();
+        let actions = state.get_legal_actions();
+        let actions: Vec<&str> = actions.iter().map(|action| action.as_ref().get_name()).collect();
+        assert_eq!(actions.len(), 2);
+        assert_eq!(actions, vec!["Down", "Right"])
     }
 }
