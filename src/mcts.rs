@@ -2,11 +2,9 @@ use crate::policy::RolloutPolicy;
 use crate::reward::Reward;
 use crate::{action::Action, state::State};
 
-type NodeId = i8;
-
 struct Node {
     parent: Option<Box<Node>>,
-    children: Vec<Box<Node>>,
+    children: Vec<Node>,
     state: Box<dyn State>,
     untried_actions: Vec<Box<dyn Action>>,
     causing_action: Option<Box<dyn Action>>,
@@ -36,15 +34,12 @@ impl Node {
         let mut chosen_index = 0;
         let mut max_value = f64::MIN;
 
-        let mut i = 0;
-        for child in &self.children {
-            let ucb1 =
-                (child.q / child.n) + exploration_constant * (f64::from(self.n) / child.n).sqrt();
+        for (i, child) in self.children.iter().enumerate() {
+            let ucb1 = (child.q / child.n) + exploration_constant * (self.n / child.n).sqrt();
             if ucb1 > max_value {
                 max_value = ucb1;
                 chosen_index = i;
             }
-            i += 1;
         }
 
         return chosen_index;
@@ -54,8 +49,17 @@ impl Node {
         todo!()
     }
 
-    fn rollout(&mut self, _policy: RolloutPolicy) -> Reward {
-        todo!();
+    fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
+        let current_state = &mut self.state;
+        while !current_state.is_game_ended() {
+            let action_option = policy(current_state.as_mut());
+            if let Some(action) = action_option {
+                action.apply_to(current_state.as_mut());
+            }
+        }
+
+        let reward = current_state.evaluate();
+        return reward;
     }
 
     fn backpropagate(&mut self, _reward: Reward) {
