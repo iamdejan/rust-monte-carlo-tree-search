@@ -23,6 +23,7 @@ impl Position {
 
 trait Action {
     fn apply_to(&self, state: &mut dyn State);
+    fn get_name(&self) -> &'static str;
 }
 
 trait State {
@@ -50,6 +51,19 @@ impl GridWorldAction {
             Self::Right => return Position { r: 0, c: 1 },
         }
     }
+
+    /// Returns the name of the action as a string slice.
+    ///
+    /// # Returns
+    /// * `&str` - The name of the action variant (e.g., "Up", "Down", "Left", "Right")
+    const fn name(&self) -> &'static str {
+        match self {
+            Self::Up => return "Up",
+            Self::Down => return "Down",
+            Self::Left => return "Left",
+            Self::Right => return "Right",
+        }
+    }
 }
 
 impl Action for GridWorldAction {
@@ -58,6 +72,10 @@ impl Action for GridWorldAction {
         let delta = self.delta();
         let new_position = current_position.add(delta);
         state.update_current_position(new_position);
+    }
+
+    fn get_name(&self) -> &'static str {
+        return self.name();
     }
 }
 
@@ -95,7 +113,6 @@ impl State for GridWorldState {
         if new_position.c < 0 || new_position.c >= Self::COLUMNS {
             return;
         }
-
 
         self.current_position = new_position;
     }
@@ -162,9 +179,11 @@ fn main() {
 
     // Apply first action to demonstrate the action application
     if let Some(action) = actions.first() {
+        let action_name = action.get_name();
         action.apply_to(state.as_mut());
         println!(
-            "After applying first action: {:#?}",
+            "After applying '{}' action: {:#?}",
+            action_name,
             state.get_current_position()
         );
     }
