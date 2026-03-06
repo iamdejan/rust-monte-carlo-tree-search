@@ -5,8 +5,8 @@ use crate::{action::Action, state::State};
 type NodeId = i8;
 
 struct Node {
-    parent: Option<NodeId>,
-    children: Vec<NodeId>,
+    parent: Option<Box<Node>>,
+    children: Vec<Box<Node>>,
     state: Box<dyn State>,
     untried_actions: Vec<Box<dyn Action>>,
     causing_action: Option<Box<dyn Action>>,
@@ -16,7 +16,7 @@ struct Node {
 
 impl Node {
     fn new(
-        parent: Option<NodeId>,
+        parent: Option<Box<Node>>,
         state: Box<dyn State>,
         causing_action: Option<Box<dyn Action>>,
     ) -> Self {
@@ -32,8 +32,22 @@ impl Node {
         };
     }
 
-    fn uct_best_child(&mut self, _c: f64) -> Self {
-        todo!()
+    fn uct_best_child(&mut self, exploration_constant: f64) -> usize {
+        let mut chosen_index = 0;
+        let mut max_value = f64::MIN;
+
+        let mut i = 0;
+        for child in &self.children {
+            let ucb1 =
+                (child.q / child.n) + exploration_constant * (f64::from(self.n) / child.n).sqrt();
+            if ucb1 > max_value {
+                max_value = ucb1;
+                chosen_index = i;
+            }
+            i += 1;
+        }
+
+        return chosen_index;
     }
 
     fn tree_policy(&mut self) -> Option<Self> {
@@ -55,17 +69,21 @@ pub fn search(
     num_of_simulations: i64,
 ) -> Box<dyn Action> {
     let mut root = Node::new(None, state, None);
-    let mut leaf_optional: Option<Node> = None;
     for _ in 0..num_of_simulations {
-        leaf_optional = root.tree_policy();
+        let leaf_optional = root.tree_policy();
         if let Some(mut leaf) = leaf_optional {
             let reward: Reward = leaf.rollout(policy);
             leaf.backpropagate(reward);
         }
     }
 
-    return root
-        .uct_best_child(0.0)
+    let chosen_index = root.uct_best_child(0.0);
+    let chosen_child = root
+        .children
+        .get_mut(chosen_index)
+        .expect("root.uct_best_child(0.0) should return valid index");
+    return chosen_child
         .causing_action
-        .expect("root.uct_best_child(0.0) should have causing_action");
+        .take() // why using take: https://stackoverflow.com/a/57862198
+        .expect("causing_action should not be None");
 }
