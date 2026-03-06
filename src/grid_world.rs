@@ -36,11 +36,14 @@ impl GridWorldAction {
 }
 
 impl Action for GridWorldAction {
-    fn apply_to(&self, state: &mut dyn State) {
+    fn apply_to(&self, state: &Box<dyn State>) -> Box<dyn State> {
         let current_position = state.get_current_position();
         let delta = self.delta();
         let new_position = current_position.add(delta);
-        state.update_current_position(new_position);
+
+        let mut new_state = GridWorldState::new();
+        new_state.update_current_position(new_position);
+        return Box::new(new_state);
     }
 
     fn get_name(&self) -> &'static str {
@@ -126,5 +129,9 @@ impl State for GridWorldState {
     fn is_game_ended(&self) -> bool {
         return self.current_position == Self::GOAL_CELL
             || self.current_position == Self::PENALTY_CELL;
+    }
+
+    fn clone_box(&self) -> Box<dyn State> {
+        return Box::new(self.clone());
     }
 }

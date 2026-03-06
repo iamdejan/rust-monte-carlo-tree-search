@@ -61,11 +61,11 @@ impl Node {
     }
 
     fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
-        let current_state = &mut self.state;
+        let mut current_state: Box<dyn State> = self.state.clone();
         while !current_state.is_game_ended() {
             let action_option = policy(current_state.as_mut());
             if let Some(action) = action_option {
-                action.apply_to(current_state.as_mut());
+                current_state = action.apply_to(&current_state);
             }
         }
 
@@ -73,20 +73,44 @@ impl Node {
         return reward;
     }
 
-    fn backpropagate(&mut self, _reward: Reward) {
-        todo!()
+    fn backpropagate(&mut self, reward: Reward) {
+        let mut current = self;
+        while !current.is_root() {
+            current.q += reward;
+            current.n += 1.0;
+            current = current.parent.as_mut().unwrap();
+        }
+        current.n += 1.0;
     }
 
     fn is_terminal(&self) -> bool {
-        todo!()
+        todo!();
     }
 
     fn is_fully_expanded(&self) -> bool {
-        todo!()
+        return self.untried_actions.is_empty();
     }
 
-    fn expand(&self) -> Option<&mut Self> {
-        todo!()
+    fn remove_first_untried_action(&mut self) -> Option<Box<dyn Action>> {
+        return Some(self.untried_actions.remove(0));
+    }
+
+    fn expand(&mut self) -> Option<&mut Self> {
+        let action_option = self.remove_first_untried_action();
+        if action_option.is_none() {
+            return Option::None;
+        }
+
+        let current = self;
+        let action = action_option.unwrap();
+        let new_state = action.apply_to(&self.state);
+        let expanded_child = Node::new(current, new_state, action_option);
+        self.children.push(expanded_child);
+        return Option::Some(&mut expanded_child);
+    }
+
+    fn is_root(&self) -> bool {
+        return self.parent.is_none();
     }
 }
 

@@ -6,4 +6,11 @@ pub trait State {
     fn evaluate(&self) -> Reward;
     fn get_legal_actions(&self) -> Vec<Box<dyn Action>>;
     fn is_game_ended(&self) -> bool;
+    fn clone_box(&self) -> Box<dyn State>;
+}
+
+impl Clone for Box<dyn State> {
+    fn clone(&self) -> Self {
+        return self.clone_box();
+    }
 }

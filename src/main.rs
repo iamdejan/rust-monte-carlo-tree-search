@@ -6,13 +6,16 @@ mod position;
 mod reward;
 mod state;
 
-use crate::grid_world::GridWorldState;
+use crate::{grid_world::GridWorldState, state::State};
 
 fn main() {
     let initial_state = Box::new(GridWorldState::new());
     let chosen_action = mcts::search(initial_state.clone(), policy::default, 100);
     println!("{}", chosen_action.get_name());
-    chosen_action.apply_to(initial_state.clone().as_mut());
+
+    let initial_state: Box<dyn State> = initial_state.clone();
+    let new_state = chosen_action.apply_to(&initial_state);
+    println!("New state's position: {:#?}", new_state.get_current_position());
     println!("Goal state: {:#?}", GridWorldState::GOAL_CELL);
     println!("Penalty state: {:#?}", GridWorldState::PENALTY_CELL);
 }
@@ -70,15 +73,14 @@ mod tests {
 
     #[test]
     fn test_grid_world_state_apply_action() {
-        let mut state = GridWorldState::new();
+        let state: Box<dyn State> = Box::new(GridWorldState::new());
         let actions = state.get_legal_actions();
 
         if let Some(action) = actions.first() {
-            action.as_ref().apply_to(&mut state);
+            let new_state = action.as_ref().apply_to(&state);
+            assert_eq!(new_state.get_current_position(), Position { r: 1, c: 0 });
         } else {
             panic!("action should exist");
         }
-
-        assert_eq!(state.get_current_position(), Position { r: 1, c: 0 });
     }
 }
