@@ -1,0 +1,1 @@
+pub type Reward = f64;
