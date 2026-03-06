@@ -1,6 +1,6 @@
+use crate::policy::RolloutPolicy;
 use crate::reward::Reward;
 use crate::{action::Action, state::State};
-use crate::policy::RolloutPolicy;
 
 type NodeId = i8;
 
@@ -15,20 +15,24 @@ struct Node {
 }
 
 impl Node {
-    fn new(parent: Option<NodeId>, state: Box<dyn State>, causing_action: Option<Box<dyn Action>>) -> Self {
+    fn new(
+        parent: Option<NodeId>,
+        state: Box<dyn State>,
+        causing_action: Option<Box<dyn Action>>,
+    ) -> Self {
         let actions = state.get_legal_actions();
         return Node {
-            parent: parent,
+            parent,
             children: vec![],
-            state: state,
-            causing_action: causing_action,
+            state,
+            causing_action,
             untried_actions: actions,
             q: 0.0,
             n: 0.0,
         };
     }
 
-    fn uct_best_child(&mut self, c: f64) -> Self {
+    fn uct_best_child(&mut self, _c: f64) -> Self {
         todo!()
     }
 
@@ -36,16 +40,20 @@ impl Node {
         todo!()
     }
 
-    fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
+    fn rollout(&mut self, _policy: RolloutPolicy) -> Reward {
         todo!();
     }
 
-    fn backpropagate(&mut self, reward: Reward) {
+    fn backpropagate(&mut self, _reward: Reward) {
         todo!()
     }
 }
 
-pub fn search(state: Box<dyn State>, policy: RolloutPolicy, num_of_simulations: i64) -> Box<dyn Action> {
+pub fn search(
+    state: Box<dyn State>,
+    policy: RolloutPolicy,
+    num_of_simulations: i64,
+) -> Box<dyn Action> {
     let mut root = Node::new(None, state, None);
     let mut leaf_optional: Option<Node> = None;
     for _ in 0..num_of_simulations {
@@ -56,5 +64,8 @@ pub fn search(state: Box<dyn State>, policy: RolloutPolicy, num_of_simulations: 
         }
     }
 
-    return root.uct_best_child(0.0).causing_action.expect("root.uct_best_child(0.0) should have causing_action");
+    return root
+        .uct_best_child(0.0)
+        .causing_action
+        .expect("root.uct_best_child(0.0) should have causing_action");
 }

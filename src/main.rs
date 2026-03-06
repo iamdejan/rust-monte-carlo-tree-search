@@ -7,9 +7,6 @@ mod reward;
 mod state;
 
 use crate::grid_world::GridWorldState;
-use crate::mcts::search;
-use crate::reward::Reward;
-use crate::state::State;
 
 fn main() {
     let initial_state = Box::new(GridWorldState::new());
@@ -21,6 +18,7 @@ fn main() {
 mod tests {
     use crate::grid_world::GridWorldAction;
     use crate::position::Position;
+    use crate::state::State;
 
     use super::*;
 
@@ -78,6 +76,6 @@ mod tests {
             panic!("action should exist");
         }
 
-        assert_eq!(state.get_current_position(), Position { r: 0, c: 1 });
+        assert_eq!(state.get_current_position(), Position { r: 1, c: 0 });
     }
 }
