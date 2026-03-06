@@ -22,7 +22,7 @@ impl Position {
 }
 
 trait Action {
-    fn apply_to(&self, state: Box<dyn State>);
+    fn apply_to(&self, state: &mut dyn State);
 }
 
 trait State {
@@ -53,7 +53,7 @@ impl GridWorldAction {
 }
 
 impl Action for GridWorldAction {
-    fn apply_to(&self, mut state: Box<dyn State>) {
+    fn apply_to(&self, state: &mut dyn State) {
         let current_position = state.get_current_position();
         let delta = self.delta();
         let new_position = current_position.add(delta);
@@ -87,9 +87,16 @@ impl State for GridWorldState {
 
     fn update_current_position(&mut self, new_position: Position) {
         if new_position == Self::BLOCKED_CELL {
-            // prevent updating if new position is blocked cell
             return;
         }
+        if new_position.r < 0 || new_position.r >= Self::ROWS {
+            return;
+        }
+        if new_position.c < 0 || new_position.c >= Self::COLUMNS {
+            return;
+        }
+
+
         self.current_position = new_position;
     }
 
@@ -117,6 +124,12 @@ impl State for GridWorldState {
             if new_position == Self::BLOCKED_CELL {
                 continue;
             }
+            if new_position.r < 0 || new_position.r >= Self::ROWS {
+                continue;
+            }
+            if new_position.c < 0 || new_position.c >= Self::COLUMNS {
+                continue;
+            }
 
             legal_actions.push(action);
         }
@@ -131,12 +144,36 @@ impl State for GridWorldState {
 }
 
 fn main() {
-    let mut state = Box::new(GridWorldState::new());
-    println!("{:#?}", state.get_current_position());
+    // Create a new state for the grid world
+    let mut state: Box<dyn State> = Box::new(GridWorldState::new());
+    println!("Initial position: {:#?}", state.get_current_position());
+
+    // Get grid dimensions for reference (uses ROWS and COLUMNS constants)
+    let rows = GridWorldState::ROWS;
+    let columns = GridWorldState::COLUMNS;
+    println!("Grid size: {rows}x{columns}");
+
+    // Convert position to usize indices (uses to_usize method)
+    let (row_idx, col_idx) = state.get_current_position().to_usize();
+    println!("Position as indices: ({row_idx}, {col_idx})");
+
     let actions = state.get_legal_actions();
-    for action in actions {
-        action.apply_to(state);
+    println!("Legal actions available: {}", actions.len());
+
+    // Apply first action to demonstrate the action application
+    if let Some(action) = actions.first() {
+        action.apply_to(state.as_mut());
+        println!(
+            "After applying first action: {:#?}",
+            state.get_current_position()
+        );
     }
+
+    // Check if game has ended and evaluate the state
+    // Uses is_game_ended() and evaluate() methods, which return Reward type
+    let ended = state.is_game_ended();
+    let reward: Reward = state.evaluate();
+    println!("Game ended: {ended}, Reward: {reward}");
 }
 
 #[cfg(test)]
