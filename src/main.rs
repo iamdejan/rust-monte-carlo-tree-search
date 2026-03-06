@@ -10,8 +10,11 @@ use crate::grid_world::GridWorldState;
 
 fn main() {
     let initial_state = Box::new(GridWorldState::new());
-    let chosen_action = mcts::search(initial_state, policy::default, 100);
-    println!("{}", chosen_action.as_ref().get_name());
+    let chosen_action = mcts::search(initial_state.clone(), policy::default, 100);
+    println!("{}", chosen_action.get_name());
+    chosen_action.apply_to(initial_state.clone().as_mut());
+    println!("Goal state: {:#?}", GridWorldState::GOAL_CELL);
+    println!("Penalty state: {:#?}", GridWorldState::PENALTY_CELL);
 }
 
 #[cfg(test)]
@@ -71,7 +74,7 @@ mod tests {
         let actions = state.get_legal_actions();
 
         if let Some(action) = actions.first() {
-            action.apply_to(&mut state);
+            action.as_ref().apply_to(&mut state);
         } else {
             panic!("action should exist");
         }

@@ -48,7 +48,7 @@ impl Action for GridWorldAction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct GridWorldState {
     pub current_position: Position,
 }
