@@ -9,11 +9,10 @@ mod state;
 use crate::{grid_world::GridWorldState, state::State};
 
 fn main() {
-    let initial_state = Box::new(GridWorldState::new());
+    let initial_state: Box<dyn State> = Box::new(GridWorldState::new());
     let chosen_action = mcts::search(initial_state.clone(), policy::default, 100);
     println!("{}", chosen_action.get_name());
 
-    let initial_state: Box<dyn State> = initial_state.clone();
     let new_state = chosen_action.apply_to(&initial_state);
     println!(
         "New state's position: {:#?}",

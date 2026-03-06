@@ -83,7 +83,7 @@ impl Node {
     }
 
     fn is_terminal(&self) -> bool {
-        todo!();
+        return self.state.is_game_ended();
     }
 
     fn is_fully_expanded(&self) -> bool {
