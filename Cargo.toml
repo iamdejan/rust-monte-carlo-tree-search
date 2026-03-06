@@ -15,3 +15,4 @@ print_stdout = "allow"
 trivially_copy_pass_by_ref = "allow"
 
 [dependencies]
+rand = "0.10.0"
