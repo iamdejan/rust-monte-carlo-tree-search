@@ -45,8 +45,19 @@ impl Node {
         return chosen_index;
     }
 
-    fn tree_policy(&mut self) -> Option<Self> {
-        todo!()
+    fn tree_policy(mut self: &mut Self) -> Option<&mut Self> {
+        while !self.is_terminal() {
+            if !self.is_fully_expanded() {
+                return self.expand();
+            }
+
+            let chosen_index = self.uct_best_child(1.4);
+            self = self
+                .children
+                .get_mut(chosen_index)?;
+        }
+
+        return Some(self);
     }
 
     fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
@@ -65,6 +76,18 @@ impl Node {
     fn backpropagate(&mut self, _reward: Reward) {
         todo!()
     }
+
+    fn is_terminal(&self) -> bool {
+        todo!()
+    }
+
+    fn is_fully_expanded(&self) -> bool {
+        todo!()
+    }
+
+    fn expand(&self) -> Option<&mut Self> {
+        todo!()
+    }
 }
 
 pub fn search(
@@ -75,7 +98,7 @@ pub fn search(
     let mut root = Node::new(None, state, None);
     for _ in 0..num_of_simulations {
         let leaf_optional = root.tree_policy();
-        if let Some(mut leaf) = leaf_optional {
+        if let Some(leaf) = leaf_optional {
             let reward: Reward = leaf.rollout(policy);
             leaf.backpropagate(reward);
         }
