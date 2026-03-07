@@ -69,7 +69,7 @@ impl GridWorldState {
 
     pub fn new() -> Self {
         return GridWorldState {
-            current_position: Position { r: 0, c: 0 },
+            current_position: Position { r: 1, c: 0 },
         };
     }
 }

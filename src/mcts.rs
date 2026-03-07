@@ -132,35 +132,42 @@ impl Node {
         return chosen_index;
     }
 
-    /// Tree policy that traverses the tree using index-based access
-    fn tree_policy(tree: &mut Tree, node_index: usize) -> Option<usize> {
+    /// Starting at the root node, MCTS moves down the tree using a selection rule.
+    /// The most common rule is UCT (Upper Confidence Bounds for Trees), which balances
+    /// - Exploitation: choosing moves with higher average reward; and
+    /// - Exploration: trying moves with less information
+    fn select_and_expand(tree: &mut Tree, node_index: usize) -> usize {
         let mut current_index = node_index;
 
         loop {
             let current = tree.get_node(current_index).unwrap();
 
             if current.is_terminal() {
-                return Some(current_index);
+                return current_index;
             }
 
             if !current.is_fully_expanded() {
-                // Expand this node
-                let action = tree
-                    .get_node_mut(current_index)
-                    .unwrap()
-                    .remove_first_untried_action();
-
-                let current_state = tree.get_node(current_index).unwrap().state.clone();
-                let new_state = action.apply_to(current_state.as_ref());
-
-                let new_index = tree.add_child(current_index, new_state, action);
-                return Some(new_index);
+                return Self::expand(tree, current_index);
             }
 
             // All actions tried, select best child
             let chosen_index = Self::uct_best_child(tree, current_index, 1.4);
             current_index = chosen_index;
         }
+    }
+
+    fn expand(tree: &mut Tree, current_index: usize) -> usize {
+        // Expand this node
+        let action = tree
+            .get_node_mut(current_index)
+            .unwrap()
+            .remove_first_untried_action();
+
+        let current_state = tree.get_node(current_index).unwrap().state.clone();
+        let new_state = action.apply_to(current_state.as_ref());
+
+        let new_index = tree.add_child(current_index, new_state, action);
+        return new_index;
     }
 
     /// Rollout simulation using index-based access
@@ -213,10 +220,9 @@ pub fn search(
     let root_index = 0;
 
     for _ in 0..num_of_simulations {
-        if let Some(leaf_index) = Node::tree_policy(&mut tree, root_index) {
-            let reward: Reward = Node::rollout(&tree, leaf_index, policy);
-            Node::backpropagate(&mut tree, leaf_index, reward);
-        }
+        let leaf_index = Node::select_and_expand(&mut tree, root_index);
+        let reward: Reward = Node::rollout(&tree, leaf_index, policy);
+        Node::backpropagate(&mut tree, leaf_index, reward);
     }
 
     let chosen_index = Node::uct_best_child(&tree, root_index, 0.0);
