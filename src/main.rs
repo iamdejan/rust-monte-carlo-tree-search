@@ -36,4 +36,9 @@ fn main() {
 
         steps += 1;
     }
+
+    // Check if we hit the step limit without reaching terminal
+    if steps >= MAX_STEPS {
+        println!("Reached max steps without reaching terminal");
+    }
 }
