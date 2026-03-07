@@ -24,7 +24,7 @@ fn main() {
             break;
         }
 
-        let chosen_action = mcts::search(state.clone(), policy::default, 200);
+        let chosen_action = mcts::search(state.clone(), policy::default, 1000);
         println!("{}", chosen_action.get_name());
 
         let new_state: Box<dyn State> = chosen_action.apply_to(state.as_ref());
