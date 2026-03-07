@@ -13,6 +13,8 @@ struct Node {
     n: f64,
 }
 
+const MAX_ROLLOUT_DEPTH: i32 = 50;
+
 impl Node {
     fn new(
         parent: Option<Box<Node>>,
@@ -66,15 +68,21 @@ impl Node {
 
     fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
         let mut current_state: Box<dyn State> = self.state.clone();
-        while !current_state.is_game_ended() {
+        let mut depth: i32 = 0;
+        let gamma: f64 = 0.95;
+
+        while depth < MAX_ROLLOUT_DEPTH && !current_state.is_game_ended() {
             let action_option = policy(current_state.as_mut());
             if let Some(action) = action_option {
                 current_state = action.apply_to(current_state.as_ref());
+                depth += 1;
+            } else {
+                break;
             }
         }
 
         let reward = current_state.evaluate();
-        return reward;
+        return reward * gamma.powi(depth);
     }
 
     fn backpropagate(&mut self, reward: Reward) {
