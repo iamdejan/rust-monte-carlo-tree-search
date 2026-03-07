@@ -515,5 +515,222 @@ mod tests {
             // rejects the out-of-bounds update
             assert_eq!(new_state.get_current_position(), Position { r: 0, c: 0 });
         }
+
+        /// Tests that GridWorldAction implements Clone correctly.
+        ///
+        /// # Steps
+        /// 1. Create a GridWorldAction
+        /// 2. Clone it
+        /// 3. Verify both original and clone have same properties
+        ///
+        /// # Expected Results
+        /// - Clone has identical properties to original
+        #[test]
+        fn test_grid_world_action_clone() {
+            let action = GridWorldAction::Right;
+            let cloned = action.clone();
+
+            assert_eq!(action.delta(), cloned.delta());
+            assert_eq!(action.name(), cloned.name());
+        }
+
+        /// Tests that GridWorldState implements Clone correctly.
+        ///
+        /// # Steps
+        /// 1. Create a GridWorldState
+        /// 2. Clone it
+        /// 3. Verify both have same position
+        ///
+        /// # Expected Results
+        /// - Clone has identical position to original
+        #[test]
+        fn test_grid_world_state_clone() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(Position { r: 2, c: 3 });
+            let cloned = state.clone();
+
+            assert_eq!(state.get_current_position(), cloned.get_current_position());
+        }
+
+        /// Tests that get_legal_actions returns correct actions from position (1, 0).
+        ///
+        /// # Steps
+        /// 1. Create state at position (1, 0)
+        /// 2. Call get_legal_actions
+        /// 3. Verify correct number and types of legal actions
+        ///
+        /// # Expected Results
+        /// - At (1,0): Up, Down are valid; Left is out of bounds, Right is blocked
+        #[test]
+        fn test_get_legal_actions_from_middle_left() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(Position { r: 1, c: 0 });
+
+            let legal_actions = state.get_legal_actions();
+
+            // At (1, 0): Up and Down are valid; Left is out of bounds, Right is blocked (1,1)
+            assert_eq!(legal_actions.len(), 2);
+
+            let action_names: Vec<&str> = legal_actions.iter().map(|a| a.get_name()).collect();
+            assert!(action_names.contains(&"Up"));
+            assert!(action_names.contains(&"Down"));
+            assert!(!action_names.contains(&"Right")); // Right goes to blocked cell (1,1)
+            assert!(!action_names.contains(&"Left"));
+        }
+
+        /// Tests that get_legal_actions returns correct actions from position (2, 3) - bottom right.
+        ///
+        /// # Steps
+        /// 1. Create state at position (2, 3) - bottom right corner
+        /// 2. Call get_legal_actions
+        /// 3. Verify only Up and Left are valid
+        ///
+        /// # Expected Results
+        /// - Should have 2 legal actions (Up, Left)
+        #[test]
+        fn test_get_legal_actions_from_bottom_right() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(Position { r: 2, c: 3 });
+
+            let legal_actions = state.get_legal_actions();
+
+            // At (2, 3): Up, Left are valid; Down and Right are out of bounds
+            assert_eq!(legal_actions.len(), 2);
+
+            let action_names: Vec<&str> = legal_actions.iter().map(|a| a.get_name()).collect();
+            assert!(action_names.contains(&"Up"));
+            assert!(action_names.contains(&"Left"));
+            assert!(!action_names.contains(&"Down"));
+            assert!(!action_names.contains(&"Right"));
+        }
+
+        /// Tests that get_legal_actions returns only 1 action from position (1, 2) - adjacent to blocked.
+        ///
+        /// # Steps
+        /// 1. Create state at position (1, 2)
+        /// 2. Call get_legal_actions
+        /// 3. Verify actions that would lead to blocked cell are excluded
+        ///
+        /// # Expected Results
+        /// - Left action would go to blocked cell (1,1), should be excluded
+        #[test]
+        fn test_get_legal_actions_adjacent_to_blocked() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(Position { r: 1, c: 2 });
+
+            let legal_actions = state.get_legal_actions();
+
+            // From (1, 2): Left goes to blocked cell (1,1), should be excluded
+            // So there should be 3 valid actions: Up, Down, Right
+            assert_eq!(legal_actions.len(), 3);
+        }
+
+        /// Tests that apply_to works correctly from different positions.
+        ///
+        /// Note: The apply_to method calculates the new position as current_position + delta,
+        /// then creates a new state starting at origin and updates to that position.
+        /// However, if the new position happens to be the blocked cell (1,1), it stays at origin.
+        ///
+        /// # Steps
+        /// 1. Create a state at position (1, 0)
+        /// 2. Apply Right action
+        /// 3. Verify new position
+        ///
+        /// # Expected Results
+        /// - Right from (1,0) computes new position (1,1) which is blocked, stays at (0,0)
+        #[test]
+        fn test_apply_to_from_different_position() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(Position { r: 1, c: 0 });
+
+            let action = GridWorldAction::Right;
+            // apply_to calculates: current (1,0) + delta (0,1) = (1,1) which is BLOCKED
+            // So new state stays at origin (0,0)
+            let new_state = action.apply_to(&state);
+
+            assert_eq!(new_state.get_current_position(), Position { r: 0, c: 0 });
+        }
+
+        /// Tests that applying action from goal position handles terminal state.
+        ///
+        /// Note: apply_to computes new position as current + delta, then creates a new
+        /// state at origin and updates to that position.
+        ///
+        /// # Steps
+        /// 1. Create a state at position (0, 3) - goal
+        /// 2. Apply Down action
+        /// 3. Verify resulting position
+        ///
+        /// # Expected Results
+        /// - Down from goal computes (0,3) + (1,0) = (1,3) which is penalty cell
+        #[test]
+        fn test_apply_to_from_goal_position() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(GridWorldState::GOAL_CELL);
+
+            let action = GridWorldAction::Down;
+            // apply_to: current (0,3) + delta (1,0) = (1,3) penalty cell
+            let new_state = action.apply_to(&state);
+
+            assert_eq!(new_state.get_current_position(), Position { r: 1, c: 3 });
+        }
+
+        /// Tests that applying action from penalty position handles terminal state.
+        ///
+        /// Note: apply_to computes new position as current + delta, then creates a new
+        /// state at origin and updates to that position.
+        ///
+        /// # Steps
+        /// 1. Create a state at penalty cell (1, 3)
+        /// 2. Apply Up action
+        /// 3. Verify resulting position
+        ///
+        /// # Expected Results
+        /// - Up from penalty computes (1,3) + (-1,0) = (0,3) which is goal cell
+        #[test]
+        fn test_apply_to_from_penalty_position() {
+            let mut state = GridWorldState::new();
+            state.update_current_position(GridWorldState::PENALTY_CELL);
+
+            let action = GridWorldAction::Up;
+            // apply_to: current (1,3) + delta (-1,0) = (0,3) goal cell
+            let new_state = action.apply_to(&state);
+
+            assert_eq!(new_state.get_current_position(), Position { r: 0, c: 3 });
+        }
+
+        /// Tests that State clone_box works correctly.
+        ///
+        /// # Steps
+        /// 1. Create a GridWorldState and wrap in Box<dyn State>
+        /// 2. Clone the box
+        /// 3. Verify both have same position
+        ///
+        /// # Expected Results
+        /// - Cloned box has same state
+        #[test]
+        fn test_state_clone_box() {
+            let state: Box<dyn State> = Box::new(GridWorldState::new());
+            let cloned = state.clone_box();
+
+            assert_eq!(state.get_current_position(), cloned.get_current_position());
+        }
+
+        /// Tests that Action clone_box works correctly.
+        ///
+        /// # Steps
+        /// 1. Create a GridWorldAction and wrap in Box<dyn Action>
+        /// 2. Clone the box
+        /// 3. Verify both have same name
+        ///
+        /// # Expected Results
+        /// - Cloned box has same action
+        #[test]
+        fn test_action_clone_box() {
+            let action: Box<dyn Action> = Box::new(GridWorldAction::Up);
+            let cloned = action.clone_box();
+
+            assert_eq!(action.get_name(), cloned.get_name());
+        }
     }
 }

@@ -546,6 +546,362 @@ mod tests {
             let chosen = Node::uct_best_child(&tree, 0, 1.4);
             assert_eq!(chosen, 1); // First child (index 1 in tree)
         }
+
+        /// Tests that uct_best_child selects child with highest UCB1 value when all visited.
+        ///
+        /// # Steps
+        /// 1. Create tree with two children
+        /// 2. Mark both children as visited with different q/n values
+        /// 3. Call uct_best_child and verify it picks the one with higher value
+        ///
+        /// # Expected Results
+        /// - Child with higher average reward (q/n) should be selected
+        #[test]
+        fn test_uct_best_child_visited_selects_higher_value() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            // Add two children
+            let child1_state = Box::new(GridWorldState::new());
+            tree.add_child(
+                0,
+                child1_state,
+                Box::new(crate::grid_world::GridWorldAction::Down),
+            );
+
+            let child2_state = Box::new(GridWorldState::new());
+            tree.add_child(
+                0,
+                child2_state,
+                Box::new(crate::grid_world::GridWorldAction::Right),
+            );
+
+            // Manually update children to have different q/n values
+            // Child 1: q=10, n=10 -> average = 1.0
+            // Child 2: q=20, n=10 -> average = 2.0
+            {
+                let child1 = tree.get_node_mut(1).unwrap();
+                child1.q = 10.0;
+                child1.n = 10.0;
+            }
+            {
+                let child2 = tree.get_node_mut(2).unwrap();
+                child2.q = 20.0;
+                child2.n = 10.0;
+            }
+            // Update root's visit count as well (needed for UCB1 calculation)
+            {
+                let root = tree.get_node_mut(0).unwrap();
+                root.n = 20.0;
+            }
+
+            // With exploration_constant=0, should select purely by exploitation
+            // Child 2 has higher average reward, so it should be chosen
+            let chosen = Node::uct_best_child(&tree, 0, 0.0);
+            assert_eq!(chosen, 2);
+        }
+
+        /// Tests that uct_best_child returns first child when children list is empty.
+        ///
+        /// # Steps
+        /// 1. Create a tree (root has no children by default)
+        /// 2. Call uct_best_child on root
+        ///
+        /// # Expected Results
+        /// - Returns 0 (the root index) as a fallback
+        #[test]
+        fn test_uct_best_child_empty_children() {
+            let state = Box::new(GridWorldState::new());
+            let tree = Tree::new(state);
+
+            // Root has no children, should return 0 as fallback
+            let chosen = Node::uct_best_child(&tree, 0, 1.4);
+            assert_eq!(chosen, 0);
+        }
+    }
+
+    /// Tests for Tree operations
+    mod tree_tests {
+        use super::*;
+
+        /// Tests that get_node returns correct node by index.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root node
+        /// 2. Call get_node with valid and invalid indices
+        /// 3. Verify correct nodes are returned or None for invalid index
+        ///
+        /// # Expected Results
+        /// - Valid index returns Some(node), invalid index returns None
+        #[test]
+        fn test_get_node_returns_correct_node() {
+            let state = Box::new(GridWorldState::new());
+            let tree = Tree::new(state);
+
+            // Valid index should return Some
+            let root = tree.get_node(0);
+            assert!(root.is_some());
+
+            // Invalid index should return None
+            let invalid = tree.get_node(999);
+            assert!(invalid.is_none());
+        }
+
+        /// Tests that get_node_mut returns correct mutable node by index.
+        ///
+        /// # Steps
+        /// 1. Create a tree
+        /// 2. Get mutable reference to root and modify it
+        /// 3. Verify modification was applied
+        ///
+        /// # Expected Results
+        /// - Mutable access works and modifications persist
+        #[test]
+        fn test_get_node_mut_modifies_node() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            // Get mutable reference and modify
+            {
+                let root = tree.get_node_mut(0).unwrap();
+                root.q = 5.0;
+                root.n = 10.0;
+            }
+
+            // Verify modification persisted
+            let root = tree.get_node(0).unwrap();
+            assert_eq!(root.q, 5.0);
+            assert_eq!(root.n, 10.0);
+        }
+
+        /// Tests that add_child correctly creates new child node.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root
+        /// 2. Add a child node
+        /// 3. Verify child is created with correct properties
+        ///
+        /// # Expected Results
+        /// - Child has correct parent index, state, and action
+        #[test]
+        fn test_add_child_creates_correct_node() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            // Add a child
+            let child_state = Box::new(GridWorldState::new());
+            let child_index = tree.add_child(
+                0,
+                child_state,
+                Box::new(crate::grid_world::GridWorldAction::Right),
+            );
+
+            // Verify child exists and has correct properties
+            let child = tree.get_node(child_index).unwrap();
+            assert_eq!(child.parent_index, Some(0));
+            assert!(child.causing_action.is_some());
+            assert_eq!(child.causing_action.as_ref().unwrap().get_name(), "Right");
+
+            // Verify root's children list includes this child
+            let root = tree.get_node(0).unwrap();
+            assert!(root.children.contains(&child_index));
+        }
+    }
+
+    /// Tests for Node operations
+    mod node_operation_tests {
+        use super::*;
+
+        /// Tests that remove_first_untried_action removes and returns the first action.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root that has untried actions
+        /// 2. Remove first untried action
+        /// 3. Verify it's removed from the list and returned
+        ///
+        /// # Expected Results
+        /// - First action is removed and returned, list size decreases
+        #[test]
+        fn test_remove_first_untried_action() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+            let root = tree.get_node_mut(0).unwrap();
+
+            let initial_count = root.untried_actions.len();
+            assert!(initial_count > 0);
+
+            let action = root.remove_first_untried_action();
+            assert_eq!(root.untried_actions.len(), initial_count - 1);
+            // At origin, Down is typically the first action (ordered by insertion)
+            assert!(action.get_name() == "Down" || action.get_name() == "Right");
+        }
+
+        /// Tests that expand adds a new child node to the tree.
+        ///
+        /// # Steps
+        /// 1. Create a tree
+        /// 2. Call expand on the root
+        /// 3. Verify a new child is created
+        ///
+        /// # Expected Results
+        /// - New child node exists with updated state
+        #[test]
+        fn test_expand_adds_child_node() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            let initial_children_count = tree.get_node(0).unwrap().children.len();
+
+            // Expand from root
+            let new_index = Node::expand(&mut tree, 0);
+
+            // Verify new child was added
+            let root = tree.get_node(0).unwrap();
+            assert_eq!(root.children.len(), initial_children_count + 1);
+
+            // Verify new node exists
+            let new_node = tree.get_node(new_index).unwrap();
+            assert!(new_node.parent_index == Some(0));
+        }
+
+        /// Tests that rollout performs simulation from a given node.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root at origin
+        /// 2. Call rollout from root
+        /// 3. Verify a reward is returned
+        ///
+        /// # Expected Results
+        /// - Rollout returns a reward value (0 for non-terminal, 1 or -1 for terminal)
+        #[test]
+        fn test_rollout_returns_reward() {
+            let state = Box::new(GridWorldState::new());
+            let tree = Tree::new(state);
+
+            let reward = Node::rollout(&tree, 0, crate::policy::default);
+
+            // Reward should be a valid value: 0, 1, or -1 (discounted)
+            assert!(reward >= -1.0 && reward <= 1.0);
+        }
+
+        /// Tests that backpropagate updates node statistics correctly.
+        ///
+        /// # Steps
+        /// 1. Create a tree with multiple nodes
+        /// 2. Call backpropagate with a reward
+        /// 3. Verify q and n values are updated along the path
+        ///
+        /// # Expected Results
+        /// - All nodes on path have updated q and n values
+        #[test]
+        fn test_backpropagate_updates_statistics() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            // Add a child first
+            let child_state = Box::new(GridWorldState::new());
+            let child_index = tree.add_child(
+                0,
+                child_state,
+                Box::new(crate::grid_world::GridWorldAction::Right),
+            );
+
+            // Backpropagate from child
+            Node::backpropagate(&mut tree, child_index, 1.0);
+
+            // Verify child was updated
+            let child = tree.get_node(child_index).unwrap();
+            assert_eq!(child.q, 1.0);
+            assert_eq!(child.n, 1.0);
+
+            // Verify root was updated
+            let root = tree.get_node(0).unwrap();
+            assert_eq!(root.q, 1.0);
+            assert_eq!(root.n, 1.0);
+        }
+
+        /// Tests that multiple backpropagations accumulate correctly.
+        ///
+        /// # Steps
+        /// 1. Create a tree with a child
+        /// 2. Call backpropagate multiple times
+        /// 3. Verify q accumulates and n counts correctly
+        ///
+        /// # Expected Results
+        /// - q is sum of rewards, n is count of simulations
+        #[test]
+        fn test_backpropagate_accumulates_multiple() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            // Add a child
+            let child_state = Box::new(GridWorldState::new());
+            let child_index = tree.add_child(
+                0,
+                child_state,
+                Box::new(crate::grid_world::GridWorldAction::Right),
+            );
+
+            // Backpropagate multiple times with different rewards
+            Node::backpropagate(&mut tree, child_index, 1.0);
+            Node::backpropagate(&mut tree, child_index, -1.0);
+            Node::backpropagate(&mut tree, child_index, 0.5);
+
+            // Verify accumulated values
+            let child = tree.get_node(child_index).unwrap();
+            assert_eq!(child.q, 1.0 - 1.0 + 0.5); // Sum = 0.5
+            assert_eq!(child.n, 3.0); // 3 simulations
+
+            let root = tree.get_node(0).unwrap();
+            assert_eq!(root.q, 0.5);
+            assert_eq!(root.n, 3.0);
+        }
+
+        /// Tests that select_and_expand returns terminal node directly.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root at terminal state (goal)
+        /// 2. Call select_and_expand
+        /// 3. Verify it returns the terminal node
+        ///
+        /// # Expected Results
+        /// - Terminal node is returned without expansion
+        #[test]
+        fn test_select_and_expand_returns_terminal() {
+            // Create a state at goal position (terminal)
+            let mut terminal_state = GridWorldState::new();
+            terminal_state.update_current_position(GridWorldState::GOAL_CELL);
+            let state = Box::new(terminal_state);
+            let mut tree = Tree::new(state);
+
+            let result_index = Node::select_and_expand(&mut tree, 0);
+
+            // Should return the terminal node (root)
+            assert_eq!(result_index, 0);
+            assert!(tree.get_node(0).unwrap().is_terminal());
+        }
+
+        /// Tests that select_and_expand expands non-terminal nodes.
+        ///
+        /// # Steps
+        /// 1. Create a tree with root at non-terminal state
+        /// 2. Call select_and_expand
+        /// 3. Verify a new child is created
+        ///
+        /// # Expected Results
+        /// - A new child node is added to the tree
+        #[test]
+        fn test_select_and_expand_expands_nonterminal() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
+
+            let initial_children = tree.get_node(0).unwrap().children.len();
+
+            Node::select_and_expand(&mut tree, 0);
+
+            let new_children = tree.get_node(0).unwrap().children.len();
+            assert_eq!(new_children, initial_children + 1);
+        }
     }
 
     /// Integration tests for the MCTS search function
