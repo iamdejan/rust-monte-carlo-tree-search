@@ -8,16 +8,36 @@ mod state;
 
 use crate::{grid_world::GridWorldState, state::State};
 
-fn main() {
-    let initial_state: Box<dyn State> = Box::new(GridWorldState::new());
-    let chosen_action = mcts::search(initial_state.clone(), policy::default, 100);
-    println!("{}", chosen_action.get_name());
+const MAX_STEPS: i8 = 50;
 
-    let new_state = chosen_action.apply_to(initial_state.as_ref());
-    println!(
-        "New state's position: {:#?}",
-        new_state.get_current_position()
-    );
-    println!("Goal state: {:#?}", GridWorldState::GOAL_CELL);
-    println!("Penalty state: {:#?}", GridWorldState::PENALTY_CELL);
+fn main() {
+    let mut state: Box<dyn State> = Box::new(GridWorldState::new());
+    let mut steps = 0;
+    while steps < MAX_STEPS {
+        if state.is_game_ended() {
+            println!(
+                "Game is ended! Step: {}, state={:#?}",
+                steps,
+                state.get_current_position()
+            );
+            break;
+        }
+
+        let chosen_action = mcts::search(state.clone(), policy::default, 1000);
+        println!("{}", chosen_action.get_name());
+
+        let new_state: Box<dyn State> = chosen_action.apply_to(state.as_ref());
+        println!(
+            "New state's position: {:#?}",
+            new_state.get_current_position()
+        );
+        state = new_state;
+
+        steps += 1;
+    }
+
+    // Check if we hit the step limit without reaching terminal
+    if steps >= MAX_STEPS {
+        println!("Reached max steps without reaching terminal");
+    }
 }
