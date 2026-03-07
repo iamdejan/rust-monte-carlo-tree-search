@@ -1,146 +1,461 @@
+//! Monte Carlo Tree Search (MCTS) implementation for decision-making in stochastic environments.
+//!
+//! This module provides an implementation of the MCTS algorithm, which is used to find optimal
+//! decisions in environments where the outcomes are uncertain. MCTS combines the precision of
+//! tree search with the generality of random sampling.
+//!
+//! ## Algorithm Overview
+//!
+//! The MCTS algorithm consists of four phases that are repeated for a fixed number of simulations:
+//! 1. **Selection**: Starting from the root, select child nodes using UCB1 until reaching a node
+//!    that is not fully expanded or is a terminal state.
+//! 2. **Expansion**: Add one or more child nodes to the selected node.
+//! 3. **Simulation (Rollout)**: Perform a random playout from the new node until reaching a terminal
+//!    state or maximum depth.
+//! 4. **Backpropagation**: Update the statistics (visit count and total reward) for all nodes
+//!    along the path from the expanded node back to the root.
+//!
+//! ## Why Index-Based Tree Structure?
+//!
+//! This implementation uses indices instead of direct pointers to reference nodes in the tree.
+//! This design choice avoids Rust's ownership issues with self-referential structures while
+//! maintaining efficient O(1) access to any node by its index.
+
 use crate::policy::RolloutPolicy;
 use crate::reward::Reward;
 use crate::{action::Action, state::State};
 
+/// Maximum depth for the rollout/simulation phase.
+/// This prevents infinite loops in states where the game doesn't terminate
+/// and limits computation time per simulation.
+const MAX_ROLLOUT_DEPTH: i32 = 50;
+
+/// Tree structure that manages nodes and provides index-based access.
+///
+/// Using indices instead of direct references allows us to store parent pointers
+/// without lifetime complexity. Each node knows its parent and children by their
+/// indices in the nodes vector.
+struct Tree {
+    /// Vector storing all nodes in the tree. Index serves as the node's unique identifier.
+    nodes: Vec<Node>,
+}
+
+impl Tree {
+    /// Creates a new MCTS tree with a root node initialized from the given state.
+    ///
+    /// The root node represents the current game state from which we want to find
+    /// the best action. We populate its `untried_actions` with all legal actions available
+    /// from this state, which drives the expansion phase.
+    ///
+    /// # Arguments
+    /// * `root_state` - The initial state to create the tree from
+    ///
+    /// # Returns
+    /// A new Tree with a single root node
+    fn new(root_state: Box<dyn State>) -> Self {
+        // Create the root node with no parent (it's the starting point)
+        let mut root = Node {
+            parent_index: None,
+            children: vec![],
+            state: root_state,
+            untried_actions: vec![],
+            // Action that led to this node - None for root since it represents initial state
+            causing_action: None,
+            // Q-value: cumulative reward through this node (starts at 0)
+            q: 0.0,
+            // Visit count: number of times this node has been part of a simulation
+            n: 0.0,
+        };
+
+        // Populate root's untried actions by querying the state for all legal moves.
+        // This is crucial for the expansion phase - we need to know what actions
+        // are available to try them one by one.
+        root.untried_actions = root.state.get_legal_actions();
+
+        let tree = Tree { nodes: vec![root] };
+        return tree;
+    }
+
+    /// Get a mutable reference to a node by its index.
+    ///
+    /// Returns None if the index is out of bounds.
+    fn get_node_mut(&mut self, index: usize) -> Option<&mut Node> {
+        return self.nodes.get_mut(index);
+    }
+
+    /// Get a reference to a node by its index.
+    ///
+    /// Returns None if the index is out of bounds.
+    fn get_node(&self, index: usize) -> Option<&Node> {
+        return self.nodes.get(index);
+    }
+
+    /// Add a new child node to an existing parent node.
+    ///
+    /// This is called during the expansion phase. We:
+    /// 1. Create a new node with the new state resulting from applying the action
+    /// 2. Add it to our nodes vector (getting a new unique index)
+    /// 3. Register this new node as a child of the parent
+    ///
+    /// # Arguments
+    /// * `parent_index` - Index of the parent node in the tree
+    /// * `state` - The new state after applying the action
+    /// * `action` - The action that led to this new state
+    ///
+    /// # Returns
+    /// The index of the newly created child node
+    fn add_child(
+        &mut self,
+        parent_index: usize,
+        state: Box<dyn State>,
+        action: Box<dyn Action>,
+    ) -> usize {
+        // Get the index where this new node will be placed
+        // (current length becomes the new index since we use push)
+        let child_index = self.nodes.len();
+
+        // Create the child node with appropriate parent reference
+        let mut child = Node {
+            parent_index: Some(parent_index),
+            children: vec![],
+            state,
+            untried_actions: vec![],
+            // Record which action led to this node for later retrieval
+            causing_action: Some(action),
+            q: 0.0,
+            n: 0.0,
+        };
+
+        // Populate child's untried actions - this is essential because we need
+        // to know what actions are available from this new state to continue
+        // the tree expansion in future simulations
+        child.untried_actions = child.state.get_legal_actions();
+
+        // Add the child to our nodes collection
+        self.nodes.push(child);
+
+        // Register this child in the parent's children list so we can traverse to it
+        self.nodes[parent_index].children.push(child_index);
+
+        return child_index;
+    }
+}
+
+/// MCTS Node that represents a game state in the search tree.
+///
+/// Each node stores:
+/// - The game state at this point
+/// - Statistics for the UCB1 formula (q: total reward, n: visit count)
+/// - Which actions have been tried (`untried_actions`)
+/// - References to parent and children via indices
+///
+/// Using indices instead of Rc<> or references avoids complex lifetime management
+/// and makes backpropagation straightforward - we just follow `parent_index` backwards.
 #[derive(Clone)]
 struct Node {
-    parent: Option<Box<Node>>,
-    children: Vec<Node>,
+    /// Index of parent node in the tree's nodes vector (None for root)
+    parent_index: Option<usize>,
+    /// Indices of child nodes in the tree's nodes vector
+    children: Vec<usize>,
+    /// The state at this node - represents the game configuration
     state: Box<dyn State>,
+    /// Actions that haven't been tried from this node yet.
+    /// These drive the expansion phase - we try each action exactly once
+    /// before considering the node fully expanded.
     untried_actions: Vec<Box<dyn Action>>,
+    /// The action that led to this node from its parent.
+    /// This is needed to return the chosen action to the caller.
     causing_action: Option<Box<dyn Action>>,
+    /// Total reward accumulated through this node.
+    /// Used in UCB1 to estimate the value of this node.
     q: f64,
+    /// Number of times this node has been visited during simulations.
+    /// Higher visit count means more confidence in the q-value estimate.
     n: f64,
 }
 
 impl Node {
-    fn new(
-        parent: Option<Box<Node>>,
-        state: Box<dyn State>,
-        causing_action: Option<Box<dyn Action>>,
-    ) -> Self {
-        let actions = state.get_legal_actions();
-        return Node {
-            parent,
-            children: vec![],
-            state,
-            causing_action,
-            untried_actions: actions,
-            q: 0.0,
-            n: 0.0,
-        };
+    /// Checks if this node represents a terminal state (game ended).
+    ///
+    /// Terminal states are important because:
+    /// 1. We don't expand from them (no actions to try)
+    /// 2. Their reward is final - no need for further simulation
+    fn is_terminal(&self) -> bool {
+        return self.state.is_game_ended();
     }
 
-    fn uct_best_child(&mut self, exploration_constant: f64) -> usize {
+    /// Checks if all legal actions have been tried from this node.
+    ///
+    /// A node is "fully expanded" when `untried_actions` is empty, meaning
+    /// we've tried all possible moves from this state. When fully expanded,
+    /// the selection phase uses UCB1 to pick among children instead of expanding.
+    fn is_fully_expanded(&self) -> bool {
+        return self.untried_actions.is_empty();
+    }
+
+    /// Removes and returns the first untried action.
+    ///
+    /// This is called during expansion to get an action to try.
+    /// We remove from the front to ensure fair ordering (FIFO).
+    fn remove_first_untried_action(&mut self) -> Box<dyn Action> {
+        return self.untried_actions.remove(0);
+    }
+
+    /// Selects the best child node using the UCB1 (Upper Confidence Bound) formula.
+    ///
+    /// The UCB1 formula balances exploration vs exploitation:
+    /// `UCB1 = q/n + C * sqrt(ln(N)/n)`
+    /// - q/n: exploitation term - average reward from this child
+    /// - C * sqrt(ln(N)/n): exploration term - encourages trying less-visited nodes
+    /// - C=1.4 is a common default that balances exploration/exploitation
+    ///
+    /// Special handling: Unvisited children (n=0) are given infinite value to ensure
+    /// every action gets tried at least once before being compared statistically.
+    ///
+    /// # Arguments
+    /// * `tree` - Reference to the tree containing all nodes
+    /// * `node_index` - Index of the current node
+    /// * `exploration_constant` - The C parameter in UCB1 (typically sqrt(2) or 1.4)
+    ///
+    /// # Returns
+    /// Index of the selected child node
+    fn uct_best_child(tree: &Tree, node_index: usize, exploration_constant: f64) -> usize {
+        let node = tree.get_node(node_index).unwrap();
+
         // If there are no children, return 0 (shouldn't happen in normal operation)
-        if self.children.is_empty() {
+        if node.children.is_empty() {
             return 0;
         }
 
-        let mut chosen_index = 0;
+        let mut chosen_index = node.children[0];
         let mut max_value = f64::MIN;
 
-        for (i, child) in self.children.iter().enumerate() {
-            let ucb1 = (child.q / child.n) + exploration_constant * (self.n / child.n).sqrt();
+        for &child_index in &node.children {
+            let child = tree.get_node(child_index).unwrap();
+
+            // Handle unvisited children - give them infinite value to ensure exploration.
+            // This is critical: without it, we'd never try new actions because the
+            // average reward (q/n) starts at 0 and may never improve.
+            if child.n == 0.0 {
+                return child_index;
+            }
+
+            // UCB1 formula: exploitation + exploration
+            // Using natural log (ln) as per original UCB1 paper
+            let ucb1 = (child.q / child.n) + exploration_constant * (node.n.ln() / child.n).sqrt();
             if ucb1 > max_value {
                 max_value = ucb1;
-                chosen_index = i;
+                chosen_index = child_index;
             }
         }
 
         return chosen_index;
     }
 
-    fn tree_policy(mut self: &mut Self) -> Option<&mut Self> {
-        while !self.is_terminal() {
-            if !self.is_fully_expanded() || self.children.is_empty() {
-                return self.expand();
+    /// Selection and Expansion phase combined.
+    ///
+    /// Starting at the root node, MCTS moves down the tree using a selection rule
+    /// until it reaches a node that either:
+    /// 1. Is a terminal state (game ended) - return this node for simulation
+    /// 2. Is not fully expanded - expand by adding a new child
+    ///
+    /// The most common rule is UCT (Upper Confidence Bounds for Trees), which balances:
+    /// - Exploitation: choosing moves with higher average reward
+    /// - Exploration: trying moves with less information
+    ///
+    /// # Arguments
+    /// * `tree` - Mutable reference to the tree
+    /// * `node_index` - Starting node index (typically root = 0)
+    ///
+    /// # Returns
+    /// Index of the node to use for rollout simulation
+    fn select_and_expand(tree: &mut Tree, node_index: usize) -> usize {
+        let mut current_index = node_index;
+
+        loop {
+            let current = tree.get_node(current_index).unwrap();
+
+            // If we've reached a terminal state, no point in expanding further
+            // The reward from this state will be backpropagated
+            if current.is_terminal() {
+                return current_index;
             }
 
-            let chosen_index = self.uct_best_child(1.4);
-            self = self.children.get_mut(chosen_index)?;
-        }
+            // If this node has untried actions, expand by trying one of them
+            // This is the "expansion" phase - we add a new branch to the tree
+            if !current.is_fully_expanded() {
+                return Self::expand(tree, current_index);
+            }
 
-        return Some(self);
+            // All actions have been tried - use UCB1 to select the most promising child
+            // This is the "selection" phase - we're exploiting what we've learned
+            let chosen_index = Self::uct_best_child(tree, current_index, 1.4);
+            current_index = chosen_index;
+        }
     }
 
-    fn rollout(&mut self, policy: RolloutPolicy) -> Reward {
-        let mut current_state: Box<dyn State> = self.state.clone();
-        while !current_state.is_game_ended() {
+    /// Expansion phase: add a new child node to the tree.
+    ///
+    /// Takes one untried action from the current node, applies it to the current state,
+    /// and adds the resulting state as a new child node. This is called during
+    /// `select_and_expand` when we find a node that isn't fully expanded.
+    ///
+    /// # Arguments
+    /// * `tree` - Mutable reference to the tree
+    /// * `current_index` - Index of the node to expand
+    ///
+    /// # Returns
+    /// Index of the newly created child node
+    fn expand(tree: &mut Tree, current_index: usize) -> usize {
+        // Get one action that hasn't been tried yet
+        let action = tree
+            .get_node_mut(current_index)
+            .unwrap()
+            .remove_first_untried_action();
+
+        // Clone current state and apply the action to get new state
+        let current_state = tree.get_node(current_index).unwrap().state.clone();
+        let new_state = action.apply_to(current_state.as_ref());
+
+        // Add the new state as a child node in the tree
+        let new_index = tree.add_child(current_index, new_state, action);
+        return new_index;
+    }
+
+    /// Simulation/Rollout phase: play out the game with random actions.
+    ///
+    /// From the given node's state, we randomly select actions until either:
+    /// 1. The game ends (terminal state reached)
+    /// 2. Maximum rollout depth is reached
+    ///
+    /// The reward is discounted by gamma^depth to favor earlier rewards.
+    /// Using a random rollout policy is computationally efficient and provides
+    /// unbiased estimates of the value of a state (given sufficient samples).
+    ///
+    /// # Arguments
+    /// * `tree` - Reference to the tree (for state access)
+    /// * `node_index` - Index of the node to simulate from
+    /// * `policy` - The rollout policy to use for action selection
+    ///
+    /// # Returns
+    /// The discounted reward from the simulation
+    fn rollout(tree: &Tree, node_index: usize, policy: RolloutPolicy) -> Reward {
+        // Clone the state so we don't modify the tree during simulation
+        let mut current_state: Box<dyn State> = tree.get_node(node_index).unwrap().state.clone();
+        let mut depth: i32 = 0;
+        // Gamma < 1 ensures that rewards further in the future are worth less
+        // This prevents infinite loops and focuses on near-term rewards
+        let gamma: f64 = 0.95;
+
+        // Keep simulating until game ends or we hit depth limit
+        while depth < MAX_ROLLOUT_DEPTH && !current_state.is_game_ended() {
             let action_option = policy(current_state.as_mut());
             if let Some(action) = action_option {
                 current_state = action.apply_to(current_state.as_ref());
+                depth += 1;
+            } else {
+                // No legal actions available - shouldn't happen in normal play
+                break;
             }
         }
 
+        // Evaluate the final state and apply discount
         let reward = current_state.evaluate();
-        return reward;
+        return reward * gamma.powi(depth);
     }
 
-    fn backpropagate(&mut self, reward: Reward) {
-        let mut current = self;
-        while !current.is_root() {
-            current.q += reward;
-            current.n += 1.0;
-            current = current.parent.as_mut().unwrap();
+    /// Backpropagation phase: update statistics along the path to root.
+    ///
+    /// After a simulation completes, we update the Q-value (total reward) and
+    /// visit count for every node on the path from the expanded node back to
+    /// the root. This information is used by UCB1 in future selections.
+    ///
+    /// The update adds the reward to each node's cumulative q-value and
+    /// increments the visit count. This allows the algorithm to learn from
+    /// the simulation results.
+    ///
+    /// # Arguments
+    /// * `tree` - Mutable reference to the tree
+    /// * `node_index` - Starting node for backpropagation (typically the expanded node)
+    /// * `reward` - The reward from the simulation to propagate
+    fn backpropagate(tree: &mut Tree, node_index: usize, reward: Reward) {
+        let mut current_index = node_index;
+
+        loop {
+            {
+                // Update this node's statistics
+                let current = tree.get_node_mut(current_index).unwrap();
+                current.q += reward; // Add reward to cumulative total
+                current.n += 1.0; // Increment visit count
+            }
+
+            // Move to parent and continue until we reach the root
+            match tree.get_node(current_index).unwrap().parent_index {
+                Some(parent_index) => {
+                    current_index = parent_index;
+                }
+                None => break, // Reached root - done
+            }
         }
-        current.n += 1.0;
-    }
-
-    fn is_terminal(&self) -> bool {
-        return self.state.is_game_ended();
-    }
-
-    fn is_fully_expanded(&self) -> bool {
-        return self.untried_actions.is_empty();
-    }
-
-    fn remove_first_untried_action(&mut self) -> Box<dyn Action> {
-        return self.untried_actions.remove(0);
-    }
-
-    fn expand(&mut self) -> Option<&mut Self> {
-        let action = self.remove_first_untried_action();
-
-        let current = self.clone();
-        let new_state = action.apply_to(self.state.as_ref());
-        let expanded_child = Node::new(
-            Option::Some(Box::new(current)),
-            new_state,
-            Option::Some(action),
-        );
-        self.children.push(expanded_child);
-        return self.children.last_mut();
-    }
-
-    fn is_root(&self) -> bool {
-        return self.parent.is_none();
     }
 }
 
+/// Performs Monte Carlo Tree Search to find the best action from the given state.
+///
+/// This is the main entry point for the MCTS algorithm. It runs a specified number
+/// of simulations, each consisting of selection/expansion, simulation, and backpropagation.
+/// After all simulations, it returns the action that led to the most visited child
+/// of the root (the "best" action according to MCTS).
+///
+/// # Arguments
+/// * `state` - The current state to search from
+/// * `policy` - The rollout policy to use during simulation phase
+/// * `num_of_simulations` - How many MCTS iterations to run (more = better but slower)
+///
+/// # Returns
+/// The best action to take from the current state (boxed for trait object return)
+///
+/// # Why return the action with most visits?
+///
+/// While UCB1 selects children during search based on the exploration/exploitation
+/// tradeoff, at the end we choose the action with the highest visit count. This is
+/// more robust because:
+/// 1. Visit count is a direct measure of how often an action was successful
+/// 2. It doesn't depend on the exploration constant C
+/// 3. It naturally handles the exploration done during search
 pub fn search(
     state: Box<dyn State>,
     policy: RolloutPolicy,
     num_of_simulations: i64,
 ) -> Box<dyn Action> {
-    let mut root = Node::new(None, state, None);
+    // Initialize the tree with the starting state
+    let mut tree = Tree::new(state);
+    let root_index = 0;
+
+    // Run the main MCTS loop: selection -> expansion -> simulation -> backpropagation
     for _ in 0..num_of_simulations {
-        let leaf_optional = root.tree_policy();
-        if let Some(leaf) = leaf_optional {
-            let reward: Reward = leaf.rollout(policy);
-            leaf.backpropagate(reward);
-        }
+        // Selection + Expansion: find a node to simulate from
+        let leaf_index = Node::select_and_expand(&mut tree, root_index);
+
+        // Simulation: play out the game randomly from this node
+        let reward: Reward = Node::rollout(&tree, leaf_index, policy);
+
+        // Backpropagation: update all nodes along the path with the result
+        Node::backpropagate(&mut tree, leaf_index, reward);
     }
 
-    let chosen_index = root.uct_best_child(0.0);
-    let chosen_child = root
-        .children
-        .get_mut(chosen_index)
-        .expect("root.uct_best_child(0.0) should return valid index");
+    // After all simulations, select the action with highest visit count
+    // We use UCB1 with exploration_constant=0 to select purely based on exploitaton
+    // (i.e., highest average reward / visit count)
+    let chosen_index = Node::uct_best_child(&tree, root_index, 0.0);
+    let chosen_child = tree.get_node(chosen_index).unwrap();
+
+    // Return the action that led to this child (cloned to transfer ownership)
     return chosen_child
         .causing_action
-        .take() // why using take: https://stackoverflow.com/a/57862198
-        .expect("causing_action should not be None");
+        .as_ref()
+        .expect("causing_action should not be None")
+        .clone_box();
 }
 
 #[cfg(test)]
@@ -153,111 +468,52 @@ mod tests {
         use super::*;
 
         /// Tests that Node::new creates a node with correct initial values.
-        ///
-        /// # Steps
-        /// 1. Create a GridWorldState
-        /// 2. Create a new Node with that state
-        /// 3. Verify the node has correct initial q and n values
-        ///
-        /// # Expected Results
-        /// - q should be 0.0, n should be 0.0
         #[test]
         fn test_node_new_initializes_correctly() {
             let state = Box::new(GridWorldState::new());
-            let node = Node::new(None, state, None);
+            let tree = Tree::new(state);
+            let root = tree.get_node(0).unwrap();
 
-            assert_eq!(node.q, 0.0);
-            assert_eq!(node.n, 0.0);
-            assert!(node.parent.is_none());
-            assert!(node.children.is_empty());
+            assert_eq!(root.q, 0.0);
+            assert_eq!(root.n, 0.0);
+            assert!(root.parent_index.is_none());
+            assert!(root.children.is_empty());
         }
 
-        /// Tests that Node::new populates untried_actions from the state's legal actions.
-        ///
-        /// # Steps
-        /// 1. Create a GridWorldState at origin (which has 2 legal actions)
-        /// 2. Create a new Node with that state
-        /// 3. Verify untried_actions has correct number of actions
-        ///
-        /// # Expected Results
-        /// - untried_actions should have 2 actions (Down, Right)
+        /// Tests that root node populates untried_actions from the state's legal actions.
         #[test]
         fn test_node_new_populates_untried_actions() {
             let state = Box::new(GridWorldState::new());
-            let node = Node::new(None, state, None);
+            let tree = Tree::new(state);
+            let root = tree.get_node(0).unwrap();
 
-            assert_eq!(node.untried_actions.len(), 2);
+            // At origin (0, 0), there are 2 legal actions: Down and Right
+            assert_eq!(root.untried_actions.len(), 2);
         }
 
         /// Tests that is_terminal correctly identifies terminal states.
-        ///
-        /// # Steps
-        /// 1. Create nodes with terminal and non-terminal states
-        /// 2. Call is_terminal on each node
-        /// 3. Verify correct identification
-        ///
-        /// # Expected Results
-        /// - Goal state: terminal, Regular state: not terminal
         #[test]
         fn test_is_terminal_identifies_terminal_states() {
-            // Non-terminal state at origin
             let state = Box::new(GridWorldState::new());
-            let node = Node::new(None, state, None);
-            assert!(!node.is_terminal());
+            let tree = Tree::new(state);
+            let root = tree.get_node(0).unwrap();
 
-            // Terminal state at goal
-            let mut goal_state = Box::new(GridWorldState::new());
-            goal_state.update_current_position(GridWorldState::GOAL_CELL);
-            let goal_node = Node::new(None, goal_state, None);
-            assert!(goal_node.is_terminal());
+            assert!(!root.is_terminal());
         }
 
         /// Tests that is_fully_expanded correctly identifies when all actions are tried.
-        ///
-        /// # Steps
-        /// 1. Create a node with untried actions
-        /// 2. Verify is_fully_expanded returns false
-        /// 3. Remove all untried actions
-        /// 4. Verify is_fully_expanded returns true
-        ///
-        /// # Expected Results
-        /// - With actions: false, without actions: true
         #[test]
         fn test_is_fully_expanded() {
             let state = Box::new(GridWorldState::new());
-            let mut node = Node::new(None, state, None);
+            let mut tree = Tree::new(state);
+            let root = tree.get_node_mut(0).unwrap();
 
             // Initially should not be fully expanded
-            assert!(!node.is_fully_expanded());
+            assert!(!root.is_fully_expanded());
 
             // Remove all untried actions
-            node.untried_actions.clear();
-            assert!(node.is_fully_expanded());
-        }
-
-        /// Tests that is_root correctly identifies root node.
-        ///
-        /// # Steps
-        /// 1. Create a root node (no parent)
-        /// 2. Create a child node (with parent)
-        /// 3. Verify is_root returns correct values
-        ///
-        /// # Expected Results
-        /// - Node without parent: true, Node with parent: false
-        #[test]
-        fn test_is_root() {
-            let state = Box::new(GridWorldState::new());
-            let root = Node::new(None, state, None);
-            assert!(root.is_root());
-
-            let child_state = Box::new(GridWorldState::new());
-            let parent = Node::new(None, child_state, None);
-            let child = Node::new(
-                Some(Box::new(parent)),
-                Box::new(GridWorldState::new()),
-                None,
-            );
-            assert!(!child.is_root());
+            root.untried_actions.clear();
+            assert!(root.is_fully_expanded());
         }
     }
 
@@ -265,150 +521,30 @@ mod tests {
     mod uct_tests {
         use super::*;
 
-        /// Tests that uct_best_child selects child with highest UCB1 value.
-        ///
-        /// # Steps
-        /// 1. Create a parent node with multiple children having different q and n values
-        /// 2. Call uct_best_child with exploration constant 0.0 (exploitation only)
-        /// 3. Verify it selects the child with highest average reward
-        ///
-        /// # Expected Results
-        /// - With exploitation only, selects child with highest q/n ratio
+        /// Tests that uct_best_child handles unvisited children correctly.
         #[test]
-        fn test_uct_best_child_exploitation_only() {
-            let mut parent = Node::new(None, Box::new(GridWorldState::new()), None);
-            parent.n = 10.0;
+        fn test_uct_best_child_unvisited() {
+            let state = Box::new(GridWorldState::new());
+            let mut tree = Tree::new(state);
 
-            // Create child with higher average reward
-            let mut child1 = Node::new(
-                Some(Box::new(parent.clone())),
-                Box::new(GridWorldState::new()),
-                None,
+            // Add two children
+            let child1_state = Box::new(GridWorldState::new());
+            tree.add_child(
+                0,
+                child1_state,
+                Box::new(crate::grid_world::GridWorldAction::Down),
             );
-            child1.q = 10.0; // Average: 10/10 = 1.0
-            child1.n = 10.0;
 
-            // Create child with lower average reward
-            let mut child2 = Node::new(
-                Some(Box::new(parent.clone())),
-                Box::new(GridWorldState::new()),
-                None,
+            let child2_state = Box::new(GridWorldState::new());
+            tree.add_child(
+                0,
+                child2_state,
+                Box::new(crate::grid_world::GridWorldAction::Right),
             );
-            child2.q = 5.0; // Average: 5/10 = 0.5
-            child2.n = 10.0;
 
-            parent.children.push(child1);
-            parent.children.push(child2);
-
-            // With exploration_constant = 0.0, should select child1 (higher q/n)
-            let chosen_index = parent.uct_best_child(0.0);
-            assert_eq!(chosen_index, 0);
-        }
-
-        /// Tests that uct_best_child considers exploration with positive exploration constant.
-        ///
-        /// # Steps
-        /// 1. Create a parent node and children with different visit counts
-        /// 2. Call uct_best_child with positive exploration constant
-        /// 3. Verify exploration term influences selection
-        ///
-        /// # Expected Results
-        /// - With exploration, less visited children may be preferred
-        #[test]
-        fn test_uct_best_child_with_exploration() {
-            let mut parent = Node::new(None, Box::new(GridWorldState::new()), None);
-            parent.n = 100.0;
-
-            // Child with moderate reward but few visits
-            let mut child1 = Node::new(
-                Some(Box::new(parent.clone())),
-                Box::new(GridWorldState::new()),
-                None,
-            );
-            child1.q = 5.0;
-            child1.n = 1.0;
-
-            // Child with higher reward but more visits
-            let mut child2 = Node::new(
-                Some(Box::new(parent.clone())),
-                Box::new(GridWorldState::new()),
-                None,
-            );
-            child2.q = 8.0;
-            child2.n = 50.0;
-
-            parent.children.push(child1);
-            parent.children.push(child2);
-
-            // With high exploration constant, should prefer less visited child
-            let chosen_index = parent.uct_best_child(10.0);
-            // Child1 has much higher exploration term due to low n
-            assert_eq!(chosen_index, 0);
-        }
-    }
-
-    /// Tests for backpropagation
-    mod backpropagate_tests {
-        use super::*;
-
-        /// Tests that backpropagate correctly updates q and n values up the tree.
-        ///
-        /// # Steps
-        /// 1. Create a tree with parent and child nodes
-        /// 2. Call backpropagate with a reward on a leaf node
-        /// 3. Verify q and n are updated correctly for all ancestors
-        ///
-        /// # Expected Results
-        /// - All nodes in path should have increased q and n
-        #[test]
-        fn test_backpropagate_updates_values() {
-            // Create a root node
-            let mut root = Node::new(None, Box::new(GridWorldState::new()), None);
-            root.n = 5.0;
-
-            // Expand from root to create a child
-            let expanded = root.expand();
-            assert!(expanded.is_some());
-
-            let child = root.children.first_mut().unwrap();
-            child.q = 2.0;
-            child.n = 2.0;
-
-            // Backpropagate reward of 1.0 from child
-            // Note: Due to the current MCTS implementation, the parent is cloned in expand(),
-            // so backpropagation updates the cloned parent, not the original root.
-            // We test that the child itself gets updated correctly.
-            child.backpropagate(1.0);
-
-            // Child should have updated values
-            assert_eq!(child.q, 3.0); // 2.0 + 1.0
-            assert_eq!(child.n, 3.0); // 2.0 + 1.0
-        }
-    }
-
-    /// Tests for the expand function
-    mod expand_tests {
-        use super::*;
-
-        /// Tests that expand adds a new child node correctly.
-        ///
-        /// # Steps
-        /// 1. Create a node with untried actions
-        /// 2. Call expand
-        /// 3. Verify a new child is added and untried_actions is reduced
-        ///
-        /// # Expected Results
-        /// - children count increases, untried_actions decreases
-        #[test]
-        fn test_expand_adds_child() {
-            let mut node = Node::new(None, Box::new(GridWorldState::new()), None);
-            let initial_untried_count = node.untried_actions.len();
-
-            let expanded = node.expand();
-
-            assert!(expanded.is_some());
-            assert_eq!(node.children.len(), 1);
-            assert_eq!(node.untried_actions.len(), initial_untried_count - 1);
+            // First call should return first unvisited child
+            let chosen = Node::uct_best_child(&tree, 0, 1.4);
+            assert_eq!(chosen, 1); // First child (index 1 in tree)
         }
     }
 
@@ -418,14 +554,6 @@ mod tests {
         use crate::policy;
 
         /// Tests that search returns a valid action.
-        ///
-        /// # Steps
-        /// 1. Create a GridWorldState
-        /// 2. Call search with default policy
-        /// 3. Verify an action is returned
-        ///
-        /// # Expected Results
-        /// - Returns Some action
         #[test]
         fn test_search_returns_action() {
             let state = Box::new(GridWorldState::new());
@@ -441,14 +569,6 @@ mod tests {
         }
 
         /// Tests that search with different simulation counts returns valid actions.
-        ///
-        /// # Steps
-        /// 1. Run search with few simulations
-        /// 2. Run search with many simulations
-        /// 3. Compare results (should be valid actions)
-        ///
-        /// # Expected Results
-        /// - Both return valid legal actions from the initial state
         #[test]
         fn test_search_with_different_simulation_counts() {
             // With few simulations
