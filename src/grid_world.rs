@@ -1,8 +1,31 @@
+//! Grid World domain implementation for Monte Carlo Tree Search.
+//!
+//! This module implements a simple grid-based navigation problem that's commonly used
+//! to demonstrate and test decision-making algorithms like MCTS.
+//!
+//! ## Problem Description
+//!
+//! The grid world is a 3x4 grid where:
+//! - The agent starts at position (0, 0)
+//! - Goal cell at (0, 3) gives reward +1
+//! - Penalty cell at (1, 3) gives reward -1 (like a trap)
+//! - Cell (1, 1) is blocked and cannot be entered
+//! - Moving outside grid boundaries is not allowed
+//!
+//! The agent can move in four directions: Up, Down, Left, Right.
+//! The game ends when the agent reaches either the goal or penalty cell.
+
 use crate::action::Action;
 use crate::position::Position;
 use crate::reward::Reward;
 use crate::state::State;
 
+/// Actions available in the Grid World domain.
+///
+/// Each action represents moving one cell in a cardinal direction.
+/// The grid uses row-column coordinates where:
+/// - r increases downward (0 is top)
+/// - c increases rightward (0 is left)
 #[derive(Debug, Clone)]
 pub enum GridWorldAction {
     Up,
@@ -12,6 +35,16 @@ pub enum GridWorldAction {
 }
 
 impl GridWorldAction {
+    /// Returns the position delta (change in row and column) for this action.
+    ///
+    /// This maps abstract actions to coordinate changes:
+    /// - Up: row decreases by 1 (move toward top)
+    /// - Down: row increases by 1 (move toward bottom)
+    /// - Left: column decreases by 1 (move toward left edge)
+    /// - Right: column increases by 1 (move toward right edge)
+    ///
+    /// # Returns
+    /// A Position representing the delta (dr, dc) to apply to current position
     pub const fn delta(&self) -> Position {
         match self {
             Self::Up => return Position { r: -1, c: 0 },
@@ -36,53 +69,114 @@ impl GridWorldAction {
 }
 
 impl Action for GridWorldAction {
+    /// Applies this action to a state, producing a new state.
+    ///
+    /// The new state is created by:
+    /// 1. Getting the current position from the state
+    /// 2. Adding our action's delta to get the potential new position
+    /// 3. Creating a new `GridWorldState` with that position (which validates bounds)
+    ///
+    /// # Arguments
+    /// * `state` - The current state to apply the action to
+    ///
+    /// # Returns
+    /// A new Box<dyn State> representing the result of taking this action
     fn apply_to(&self, state: &dyn State) -> Box<dyn State> {
+        // Get current position from the state interface
         let current_position = state.get_current_position();
+
+        // Calculate potential new position by adding our direction delta
         let delta = self.delta();
         let new_position = current_position.add(delta);
 
+        // Create new state - the constructor handles boundary and blocked cell checks
         let mut new_state = GridWorldState::new();
         new_state.update_current_position(new_position);
+
         return Box::new(new_state);
     }
 
+    /// Returns the name of this action for display/logging purposes.
     fn get_name(&self) -> &'static str {
         return self.name();
     }
 
+    /// Creates a boxed clone of this action.
+    ///
+    /// This enables the Action trait object pattern where we can
+    /// store and clone actions without knowing their concrete type.
     fn clone_box(&self) -> Box<dyn Action> {
         return Box::new(self.clone());
     }
 }
 
+/// Represents the complete state of a Grid World environment.
+///
+/// This struct holds the agent's current position in the grid.
+/// All other aspects of the environment (grid size, goal, obstacles) are
+/// defined as constants for simplicity.
 #[derive(Debug, Clone)]
 pub struct GridWorldState {
+    /// The current position of the agent in the grid
     pub current_position: Position,
 }
 
 impl GridWorldState {
+    /// Number of rows in the grid (3 rows, indexed 0-2)
     pub const ROWS: i8 = 3;
+    /// Number of columns in the grid (4 columns, indexed 0-3)
     pub const COLUMNS: i8 = 4;
+
+    /// Goal cell position - reaching here ends the game with reward +1
+    /// Located at top-right corner: row 0, column 3
     pub const GOAL_CELL: Position = Position { r: 0, c: 3 };
+
+    /// Penalty/trap cell position - reaching here ends the game with reward -1
+    /// Located at row 1, column 3
     pub const PENALTY_CELL: Position = Position { r: 1, c: 3 };
+
+    /// Blocked cell position - cannot be entered
+    /// Located at row 1, column 1
     pub const BLOCKED_CELL: Position = Position { r: 1, c: 1 };
 
+    /// Creates a new `GridWorldState` with the agent at the starting position.
+    ///
+    /// The agent starts at position (0, 0), which is the top-left corner of the grid.
+    /// This is a valid starting point as (0, 0) is not blocked and not terminal.
+    ///
+    /// # Returns
+    /// A new `GridWorldState` with `current_position` set to origin
     pub fn new() -> Self {
         return GridWorldState {
-            current_position: Position { r: 1, c: 0 },
+            current_position: Position { r: 0, c: 0 },
         };
     }
 }
 
 impl State for GridWorldState {
+    /// Gets the current position of the agent.
     fn get_current_position(&self) -> Position {
         return self.current_position;
     }
 
+    /// Updates the current position if the new position is valid.
+    ///
+    /// A position is valid if:
+    /// 1. It's not the blocked cell
+    /// 2. It's within grid boundaries (0 <= r < ROWS, 0 <= c < COLUMNS)
+    ///
+    /// If the new position is invalid, the current position remains unchanged.
+    /// This models the real-world constraint that the agent cannot move through
+    /// walls or blocked areas.
+    ///
+    /// # Arguments
+    /// * `new_position` - The desired new position
     fn update_current_position(&mut self, new_position: Position) {
+        // Reject if trying to move into the blocked cell
         if new_position == Self::BLOCKED_CELL {
             return;
         }
+        // Reject if moving outside the grid
         if new_position.r < 0 || new_position.r >= Self::ROWS {
             return;
         }
@@ -90,9 +184,20 @@ impl State for GridWorldState {
             return;
         }
 
+        // Valid position - update the agent's location
         self.current_position = new_position;
     }
 
+    /// Evaluates the current state and returns the reward.
+    ///
+    /// The reward function is:
+    /// - +1.0 if at goal cell (0, 3)
+    /// - -1.0 if at penalty cell (1, 3)
+    /// - 0.0 otherwise
+    ///
+    /// This sparse reward function encourages the agent to find the goal
+    /// while avoiding the penalty cell. The agent must explore to discover
+    /// which path leads to the positive reward.
     fn evaluate(&self) -> Reward {
         return match self.current_position {
             Self::GOAL_CELL => 1.0,
@@ -101,8 +206,19 @@ impl State for GridWorldState {
         };
     }
 
+    /// Returns all legal actions available from the current position.
+    ///
+    /// An action is legal if applying it results in a valid position
+    /// (not blocked and within bounds). This filters out actions that
+    /// would move the agent outside the grid or into obstacles.
+    ///
+    /// # Returns
+    /// A vector of boxed Action objects representing valid moves
     fn get_legal_actions(&self) -> Vec<Box<dyn Action>> {
+        // Get current position
         let current_position = self.get_current_position();
+
+        // Start with all four possible directions
         let actions = vec![
             Box::new(GridWorldAction::Up),
             Box::new(GridWorldAction::Down),
@@ -110,13 +226,18 @@ impl State for GridWorldState {
             Box::new(GridWorldAction::Right),
         ];
 
+        // Filter to only include actions that result in valid positions
         let mut legal_actions: Vec<Box<dyn Action>> = vec![];
         for action in actions {
+            // Calculate where this action would take us
             let delta = action.delta();
             let new_position = current_position.add(delta);
+
+            // Skip if this leads to blocked cell
             if new_position == Self::BLOCKED_CELL {
                 continue;
             }
+            // Skip if this goes outside grid bounds
             if new_position.r < 0 || new_position.r >= Self::ROWS {
                 continue;
             }
@@ -124,17 +245,26 @@ impl State for GridWorldState {
                 continue;
             }
 
+            // This action is valid - add to our list
             legal_actions.push(action);
         }
 
         return legal_actions;
     }
 
+    /// Checks if the game has ended.
+    ///
+    /// The game ends when the agent reaches either the goal or penalty cell.
+    /// At terminal states, no further actions can be taken (the episode is done).
     fn is_game_ended(&self) -> bool {
         return self.current_position == Self::GOAL_CELL
             || self.current_position == Self::PENALTY_CELL;
     }
 
+    /// Creates a boxed clone of this state.
+    ///
+    /// This enables the State trait object pattern where we can
+    /// store and clone states without knowing their concrete type.
     fn clone_box(&self) -> Box<dyn State> {
         return Box::new(self.clone());
     }
