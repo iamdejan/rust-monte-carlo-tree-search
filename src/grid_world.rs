@@ -6,7 +6,7 @@
 //! ## Problem Description
 //!
 //! The grid world is a 3x4 grid where:
-//! - The agent starts at position (0, 0)
+//! - The agent starts at position (1, 0)
 //! - Goal cell at (0, 3) gives reward +1
 //! - Penalty cell at (1, 3) gives reward -1 (like a trap)
 //! - Cell (1, 1) is blocked and cannot be entered
@@ -127,6 +127,9 @@ impl GridWorldState {
     /// Number of columns in the grid (4 columns, indexed 0-3)
     pub const COLUMNS: i8 = 4;
 
+    /// Starting position of the agent - row 1, column 0 (left side of middle row)
+    pub const STARTING_CELL: Position = Position { r: 1, c: 0 };
+
     /// Goal cell position - reaching here ends the game with reward +1
     /// Located at top-right corner: row 0, column 3
     pub const GOAL_CELL: Position = Position { r: 0, c: 3 };
@@ -141,14 +144,14 @@ impl GridWorldState {
 
     /// Creates a new `GridWorldState` with the agent at the starting position.
     ///
-    /// The agent starts at position (0, 0), which is the top-left corner of the grid.
-    /// This is a valid starting point as (0, 0) is not blocked and not terminal.
+    /// The agent starts at position (1, 0), which is row 1, column 0 (left side of middle row).
+    /// This is a valid starting point as (1, 0) is not blocked and not terminal.
     ///
     /// # Returns
-    /// A new `GridWorldState` with `current_position` set to origin
+    /// A new `GridWorldState` with `current_position` set to the starting cell
     pub fn new() -> Self {
         return GridWorldState {
-            current_position: Position { r: 0, c: 0 },
+            current_position: Self::STARTING_CELL,
         };
     }
 }
@@ -317,18 +320,18 @@ mod tests {
     mod grid_world_state_tests {
         use super::*;
 
-        /// Tests that new() creates a state with the correct initial position (0, 0).
+        /// Tests that new() creates a state with the correct initial position (1, 0).
         ///
         /// # Steps
         /// 1. Create a new GridWorldState using new()
-        /// 2. Verify the current_position is at origin (0, 0)
+        /// 2. Verify the current_position is at starting cell (1, 0)
         ///
         /// # Expected Results
-        /// - Initial position is {r: 0, c: 0}
+        /// - Initial position is {r: 1, c: 0}
         #[test]
         fn test_new_creates_state_at_origin() {
             let state = GridWorldState::new();
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
         }
 
         /// Tests that evaluate() returns correct rewards for different cell types.
@@ -398,31 +401,31 @@ mod tests {
         fn test_update_current_position_handles_boundaries() {
             let mut state = GridWorldState::new();
 
-            // Test blocked cell is rejected
+            // Test blocked cell is rejected - position should stay at starting cell (1, 0)
             state.update_current_position(GridWorldState::BLOCKED_CELL);
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
 
             // Test out of bounds (negative row) is rejected
             state.update_current_position(Position { r: -1, c: 0 });
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
 
             // Test out of bounds (negative column) is rejected
             state.update_current_position(Position { r: 0, c: -1 });
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
 
             // Test out of bounds (row >= ROWS) is rejected
             state.update_current_position(Position {
                 r: GridWorldState::ROWS,
                 c: 0,
             });
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
 
             // Test out of bounds (col >= COLUMNS) is rejected
             state.update_current_position(Position {
                 r: 0,
                 c: GridWorldState::COLUMNS,
             });
-            assert_eq!(state.current_position, Position { r: 0, c: 0 });
+            assert_eq!(state.current_position, GridWorldState::STARTING_CELL);
 
             // Test valid position update works
             state.update_current_position(Position { r: 1, c: 0 });
@@ -437,20 +440,21 @@ mod tests {
         /// 3. Verify correct number and types of legal actions are returned
         ///
         /// # Expected Results
-        /// - Origin: 2 legal actions (Down, Right)
+        /// - Starting position (1, 0): 2 legal actions (Up, Down)
         /// - Near blocked cell: should exclude actions leading to blocked cell
         #[test]
         fn test_get_legal_actions_returns_correct_actions() {
-            // At origin (0, 0): Up and Left would go out of bounds, Down and Right are valid
+            // At starting position (1, 0): Left would go out of bounds,
+            // Right would lead to blocked cell (1, 1), so Up and Down are valid
             let state = GridWorldState::new();
             let legal_actions = state.get_legal_actions();
             assert_eq!(legal_actions.len(), 2);
 
-            // Verify the specific actions available at origin
+            // Verify the specific actions available at starting position
             let action_names: Vec<&str> = legal_actions.iter().map(|a| a.get_name()).collect();
+            assert!(action_names.contains(&"Up"));
             assert!(action_names.contains(&"Down"));
-            assert!(action_names.contains(&"Right"));
-            assert!(!action_names.contains(&"Up"));
+            assert!(!action_names.contains(&"Right"));
             assert!(!action_names.contains(&"Left"));
         }
 
@@ -483,37 +487,44 @@ mod tests {
         /// 3. Verify the resulting state has the correct new position
         ///
         /// # Expected Results
-        /// - Right action from (0, 0) moves to (0, 1)
+        /// - Right action from (1, 0) leads to blocked cell (1, 1), so stays at (1, 0)
         #[test]
         fn test_apply_to_moves_agent_correctly() {
             let state = GridWorldState::new();
             let action = GridWorldAction::Right;
 
             let new_state = action.apply_to(&state);
-            assert_eq!(new_state.get_current_position(), Position { r: 0, c: 1 });
+            // Right from (1, 0) tries to go to (1, 1) which is blocked, so stays at (1, 0)
+            assert_eq!(
+                new_state.get_current_position(),
+                GridWorldState::STARTING_CELL
+            );
         }
 
         /// Tests that apply_to handles wall collisions correctly.
         ///
         /// # Steps
-        /// 1. Create a state at position (0, 0) and try to move Up (which is out of bounds)
+        /// 1. Create a state at starting position (1, 0) and try to move Left (which is out of bounds)
         /// 2. Apply the action
-        /// 3. Verify position doesn't change (or verify valid move only)
+        /// 3. Verify position doesn't change (invalid move is rejected)
         ///
         /// # Expected Results
-        /// - Valid moves only change position when within bounds and not blocked
+        /// - Invalid moves are rejected and position stays the same
         #[test]
         fn test_apply_to_handles_wall_collisions() {
             let state = GridWorldState::new();
 
-            // Try moving up from origin - this should result in staying at origin
-            // because the grid world implementation rejects invalid moves
-            let action = GridWorldAction::Up;
+            // Try moving left from starting position (1, 0) - this goes out of bounds
+            // because column -1 is invalid, so the move is rejected
+            let action = GridWorldAction::Left;
             let new_state = action.apply_to(&state);
 
-            // The new state will have position (0, 0) because update_current_position
+            // The new state will have position (1, 0) because update_current_position
             // rejects the out-of-bounds update
-            assert_eq!(new_state.get_current_position(), Position { r: 0, c: 0 });
+            assert_eq!(
+                new_state.get_current_position(),
+                GridWorldState::STARTING_CELL
+            );
         }
 
         /// Tests that GridWorldAction implements Clone correctly.
@@ -637,7 +648,7 @@ mod tests {
         /// 3. Verify new position
         ///
         /// # Expected Results
-        /// - Right from (1,0) computes new position (1,1) which is blocked, stays at (0,0)
+        /// - Right from (1,0) tries to go to (1,1) which is blocked, stays at (1,0)
         #[test]
         fn test_apply_to_from_different_position() {
             let mut state = GridWorldState::new();
@@ -645,10 +656,10 @@ mod tests {
 
             let action = GridWorldAction::Right;
             // apply_to calculates: current (1,0) + delta (0,1) = (1,1) which is BLOCKED
-            // So new state stays at origin (0,0)
+            // So new state stays at starting position (1,0)
             let new_state = action.apply_to(&state);
 
-            assert_eq!(new_state.get_current_position(), Position { r: 0, c: 0 });
+            assert_eq!(new_state.get_current_position(), Position { r: 1, c: 0 });
         }
 
         /// Tests that applying action from goal position handles terminal state.

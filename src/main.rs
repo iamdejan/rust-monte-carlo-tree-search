@@ -1,12 +1,12 @@
 //! Main entry point for the Monte Carlo Tree Search Grid World demo.
 //!
 //! This program demonstrates the MCTS algorithm solving a simple grid navigation problem.
-//! The agent must find the optimal path from the starting position (0, 0) to the goal
+//! The agent must find the optimal path from the starting position (1, 0) to the goal
 //! at (0, 3) while avoiding the penalty cell at (1, 3) and blocked cell at (1, 1).
 //!
 //! ## How it Works
 //!
-//! 1. Create an initial `GridWorldState` at position (0, 0)
+//! 1. Create an initial `GridWorldState` at position (1, 0)
 //! 2. Run MCTS search with 1000 simulations
 //! 3. Get the best action from the search
 //! 4. Apply the action to get the new state
@@ -15,7 +15,7 @@
 //! ## Expected Output
 //!
 //! The algorithm should find a path to the goal. A typical good path might be:
-//! Right -> Right -> Right -> Down (to reach the goal at position 0,3)
+//! Up -> Right -> Right -> Right (to reach the goal at position 0,3)
 
 /// Module declarations for all components of the MCTS system.
 /// Each module implements a specific aspect of the algorithm.
@@ -37,7 +37,7 @@ use crate::{grid_world::GridWorldState, state::State};
 const MAX_STEPS: i8 = 50;
 
 fn main() {
-    // Create the initial state at position (0, 0)
+    // Create the initial state at position (1, 0)
     let mut state: Box<dyn State> = Box::new(GridWorldState::new());
 
     // Track number of steps taken

@@ -732,8 +732,8 @@ mod tests {
 
             let action = root.remove_first_untried_action();
             assert_eq!(root.untried_actions.len(), initial_count - 1);
-            // At origin, Down is typically the first action (ordered by insertion)
-            assert!(action.get_name() == "Down" || action.get_name() == "Right");
+            // At starting position (1, 0), valid actions are Up and Down
+            assert!(action.get_name() == "Up" || action.get_name() == "Down");
         }
 
         /// Tests that expand adds a new child node to the tree.
@@ -915,11 +915,11 @@ mod tests {
             let state = Box::new(GridWorldState::new());
             let action = search(state, policy::default, 10);
 
-            // Verify the action name is valid (Down or Right from origin)
+            // Verify the action name is valid (Up or Down from starting position)
             let name = action.get_name();
             assert!(
-                name == "Down" || name == "Right",
-                "Expected Down or Right, got {}",
+                name == "Up" || name == "Down",
+                "Expected Up or Down, got {}",
                 name
             );
         }
@@ -937,15 +937,15 @@ mod tests {
             let action_many = search(state2, policy::default, 20);
             let many_name = action_many.get_name();
 
-            // Both should return valid action names (Down or Right from origin)
+            // Both should return valid action names (Up or Down from starting position)
             assert!(
-                few_name == "Down" || few_name == "Right",
-                "Expected Down or Right, got {}",
+                few_name == "Up" || few_name == "Down",
+                "Expected Up or Down, got {}",
                 few_name
             );
             assert!(
-                many_name == "Down" || many_name == "Right",
-                "Expected Down or Right, got {}",
+                many_name == "Up" || many_name == "Down",
+                "Expected Up or Down, got {}",
                 many_name
             );
         }

@@ -15,10 +15,73 @@ To run this program, you need the following:
    pip install pixi
    ```
 
-2. **Run the program**
+2. **Download Dependencies** - Once Pixi is installed, run the following command to download all project dependencies:
+   ```bash
+   pixi install
+   ```
+
+3. **Setup Pre-commit** - Install the pre-commit hooks to automatically run linting and build checks before push:
+   ```bash
+   pixi run pre-commit install --hook-type pre-push
+   ```
+
+   > **Note:** Re-run this command whenever `.pre-commit-config.yaml` is changed to update the hooks.
+
+4. **Run the program**
    ```bash
    pixi run start
    ```
+
+## Grid World
+
+This project demonstrates MCTS solving a grid-based navigation problem. The grid world is a classic reinforcement learning environment used to test decision-making algorithms.
+
+### Grid Layout
+
+The grid is a **3x4** layout (3 rows, 4 columns) with the following structure:
+
+|   | Col 0 | Col 1 | Col 2 | Col 3 |
+|---|-------|-------|-------|-------|
+| **Row 0** |       |       |       | Goal (+1) |
+| **Row 1** | Start | Blocked |   | Penalty (-1) |
+| **Row 2** |       |       |       |       |
+
+### Coordinate System
+
+- **Rows** are indexed from top to bottom (0 to 2)
+- **Columns** are indexed from left to right (0 to 3)
+- Position (r, c) represents row `r` and column `c`
+
+### Special Cells
+
+| Cell Type | Position | Description |
+|-----------|----------|-------------|
+| **Start** | (1, 0) | The agent begins at row 1, column 0 (left side of middle row) |
+| **Goal** | (0, 3) | Top-right corner - reaching this cell yields reward **+1** and ends the episode |
+| **Penalty** | (1, 3) | Row 1, Column 3 - acts as a trap with reward **-1**, also ends the episode |
+| **Blocked** | (1, 1) | Row 1, Column 1 - obstacle cell that cannot be entered |
+
+### Terminal States
+
+The episode ends (terminal state reached) when the agent arrives at:
+- **Goal cell (0, 3)** - Success! Reward = +1
+- **Penalty cell (1, 3)** - Failure! Reward = -1
+
+At terminal states, no further actions are possible and the final reward is assigned.
+
+### Actions
+
+The agent can move in four cardinal directions:
+- **Up** - Move one row up (decreases row index)
+- **Down** - Move one row down (increases row index)
+- **Left** - Move one column left (decreases column index)
+- **Right** - Move one column right (increases column index)
+
+Attempting to move outside the grid boundaries or into the blocked cell results in staying at the current position (invalid moves are rejected).
+
+### Objective
+
+The MCTS algorithm aims to find the optimal path from the starting position (1, 0) to the goal cell (0, 3) while avoiding the penalty cell (1, 3) and the blocked cell (1, 1).
 
 ## Available Commands
 
