@@ -98,7 +98,7 @@ The MCTS algorithm aims to find the optimal path from the starting position (1, 
 ## Project Tree Structure
 
 ```
-rust-monte-carlo-tree-search/
+Root/
 ├── .github/
 │   └── workflows/
 │       ├── pr-pipeline.yaml      # CI/CD pipeline for pull requests
@@ -107,6 +107,7 @@ rust-monte-carlo-tree-search/
 │   └── rules/
 │       ├── code_generation.md    # Guidelines for AI code generation
 │       └── code_validation.md    # Guidelines for code validation
+├── .pixi/                         # Pixi virtual environment (generated)
 ├── src/
 │   ├── action.rs                 # Action trait definition for MCTS
 │   ├── grid_world.rs             # Grid world domain implementation
@@ -119,6 +120,7 @@ rust-monte-carlo-tree-search/
 ├── .editorconfig                 # Editor configuration for consistent formatting
 ├── .gitattributes                # Git attributes (handles pixi.lock merging)
 ├── .gitignore                    # Git ignore patterns
+├── .pre-commit-config.yaml       # Pre-commit hooks configuration
 ├── Cargo.lock                    # Cargo dependency lock file
 ├── Cargo.toml                    # Cargo manifest (Rust project config)
 ├── LICENSE.txt                   # Public domain license (Unlicense)
@@ -142,6 +144,7 @@ rust-monte-carlo-tree-search/
 | [`.editorconfig`](.editorconfig:1) | Editor configuration ensuring consistent code style (4-space indentation for Rust) |
 | [`.gitattributes`](.gitattributes:1) | Git attributes for handling pixi.lock as binary YAML |
 | [`.gitignore`](.gitignore:1) | Git ignore patterns for build artifacts, IDE files, and pixi environments |
+| [`.pre-commit-config.yaml`](.pre-commit-config.yaml:1) | Pre-commit hooks configuration for running lint and format checks before commits |
 
 ### Source Files
 
@@ -162,3 +165,4 @@ rust-monte-carlo-tree-search/
 |-----------|-------------|
 | [`.github/workflows/`](.github/workflows/) | CI/CD pipelines: `pr-pipeline.yaml` runs lint and tests on pull requests; `trunk-pipeline.yaml` runs on main branch |
 | [`.kilocode/rules/`](.kilocode/rules/) | Kilo Code agent guidelines: code generation rules and code validation procedures |
+| [`.pixi/`](.pixi/) | Pixi virtual environment directory containing dependencies and tools (auto-generated, should not be committed) |

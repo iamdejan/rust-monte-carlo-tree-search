@@ -10,3 +10,5 @@ Run these commands in sequence:
 3. `pixi run lint-fix`: if there is any linter error, fix it with this command.
 4. `pixi run lint`: recheck again, maybe there are linter errors that need manual fix.
 5. `pixi run test`: build the code, then run all unit tests. This ensures that the code you generate pass all the unit tests.
+
+After the validation is finished, update the project tree structure and file descriptions in README.md if needed. This is to ensure we always have updated documentation.
