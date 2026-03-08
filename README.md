@@ -129,7 +129,7 @@ Root/
 └── README.md                     # This file
 ```
 
-## File Descriptions
+This section explains the purpose of each file in the repository:
 
 ### Root Directory Files
 
