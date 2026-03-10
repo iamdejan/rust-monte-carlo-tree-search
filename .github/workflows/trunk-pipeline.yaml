@@ -1,4 +1,4 @@
-name: PR Pipeline
+name: Trunk Pipeline
 on:
   push:
     branches:
