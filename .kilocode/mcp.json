@@ -1,0 +1,27 @@
+{
+    "mcpServers": {
+        "rust-docs": {
+            "command": "rust-docs-mcp",
+            "transport": "stdio",
+            "alwaysAllow": [
+                "remove_crate",
+                "cache_crate_from_github",
+                "get_dependencies",
+                "search_items_fuzzy",
+                "search_items_preview",
+                "cache_crate_from_local",
+                "list_crate_versions",
+                "get_crates_metadata",
+                "list_crate_items",
+                "search_items",
+                "cache_crate_from_cratesio",
+                "structure",
+                "get_item_docs",
+                "list_cached_crates",
+                "get_item_source",
+                "get_item_details"
+            ],
+            "timeout": 300
+        }
+    }
+}

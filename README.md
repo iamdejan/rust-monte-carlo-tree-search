@@ -4,30 +4,44 @@ This is Rust implementation of Monte-Carlo Tree Search. The grid world is based 
 
 ## Prerequisites
 
-To run this program, you need the following:
+Before running this program, ensure you have the following installed:
 
-1. **Install Pixi** - A fast Python package manager built in Rust
+1. **Pixi** - A package manager for Rust and other languages. Install it by following the official guide at [https://pixi.prefix.dev/latest/](https://pixi.prefix.dev/latest/).
+
+2. **rust-docs-mcp** - An MCP server that provides comprehensive access to Rust crate documentation, source code analysis, dependency trees, and module structure visualization. Install it using one of the following methods:
+
+   **Quick Install (recommended):**
    ```bash
-   # On macOS/Linux using curl
-   curl -fsSL https://pixi.sh/install.sh | bash
-   
-   # Or using pip
-   pip install pixi
+   curl -sSL https://raw.githubusercontent.com/snowmead/rust-docs-mcp/main/install.sh | bash
    ```
 
-2. **Download Dependencies** - Once Pixi is installed, run the following command to download all project dependencies:
+   **Or via Cargo:**
+   ```bash
+   cargo install rust-docs-mcp
+   ```
+
+   For more installation options, see the [official installation guide](https://github.com/snowmead/rust-docs-mcp#installation).
+
+3. **Download Dependencies** - Once Pixi is installed, run the following command to download all project dependencies:
    ```bash
    pixi install
    ```
 
-3. **Setup Pre-commit** - Install the pre-commit hooks to automatically run linting and build checks before push:
+4. **Setup Pre-commit** - Install the pre-commit hooks to automatically run linting and build checks before push:
    ```bash
    pixi run pre-commit install --hook-type pre-push
    ```
 
    > **Note:** Re-run this command whenever `.pre-commit-config.yaml` is changed to update the hooks.
 
-4. **Run the program**
+5. **Build the project** - If you want to build the project without running it, run the following command:
+   ```bash
+   pixi run build
+   ```
+
+## Run the Program
+
+Use the following command to build and run the project:
    ```bash
    pixi run start
    ```
@@ -103,11 +117,7 @@ Root/
 │   └── workflows/
 │       ├── pr-pipeline.yaml      # CI/CD pipeline for pull requests
 │       └── trunk-pipeline.yaml   # CI/CD pipeline for trunk/main branch
-├── .kilocode/
-│   └── rules/
-│       ├── code_generation.md    # Guidelines for AI code generation
-│       └── code_validation.md    # Guidelines for code validation
-├── .pixi/                         # Pixi virtual environment (generated)
+├── .kilocode/                      # Kilo Code agent configuration and MCP settings
 ├── src/
 │   ├── action.rs                 # Action trait definition for MCTS
 │   ├── grid_world.rs             # Grid world domain implementation
@@ -120,7 +130,7 @@ Root/
 ├── .editorconfig                 # Editor configuration for consistent formatting
 ├── .gitattributes                # Git attributes (handles pixi.lock merging)
 ├── .gitignore                    # Git ignore patterns
-├── .pre-commit-config.yaml       # Pre-commit hooks configuration
+├── AGENTS.md                     # Agent guidelines for code generation, debugging, and validation
 ├── Cargo.lock                    # Cargo dependency lock file
 ├── Cargo.toml                    # Cargo manifest (Rust project config)
 ├── LICENSE.txt                   # Public domain license (Unlicense)
@@ -145,6 +155,7 @@ This section explains the purpose of each file in the repository:
 | [`.gitattributes`](.gitattributes:1) | Git attributes for handling pixi.lock as binary YAML |
 | [`.gitignore`](.gitignore:1) | Git ignore patterns for build artifacts, IDE files, and pixi environments |
 | [`.pre-commit-config.yaml`](.pre-commit-config.yaml:1) | Pre-commit hooks configuration for running lint and format checks before commits |
+| [`AGENTS.md`](AGENTS.md:1) | Agent guidelines containing rules for code generation, debugging, and validation |
 
 ### Source Files
 
@@ -164,5 +175,4 @@ This section explains the purpose of each file in the repository:
 | Directory | Description |
 |-----------|-------------|
 | [`.github/workflows/`](.github/workflows/) | CI/CD pipelines: `pr-pipeline.yaml` runs lint and tests on pull requests; `trunk-pipeline.yaml` runs on main branch |
-| [`.kilocode/rules/`](.kilocode/rules/) | Kilo Code agent guidelines: code generation rules and code validation procedures |
-| [`.pixi/`](.pixi/) | Pixi virtual environment directory containing dependencies and tools (auto-generated, should not be committed) |
+| [`.kilocode/`](.kilocode/) | Kilo Code agent configuration and MCP settings (mcp.json) |
