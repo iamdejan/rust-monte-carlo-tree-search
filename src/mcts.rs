@@ -151,7 +151,6 @@ impl Tree {
 ///
 /// Using indices instead of Rc<> or references avoids complex lifetime management
 /// and makes backpropagation straightforward - we just follow `parent_index` backwards.
-#[derive(Clone)]
 struct Node {
     /// Index of parent node in the tree's nodes vector (None for root)
     parent_index: Option<usize>,
