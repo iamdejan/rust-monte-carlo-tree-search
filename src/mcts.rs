@@ -256,7 +256,7 @@ pub fn search(
         .causing_action
         .as_ref()
         .expect("causing_action should not be None")
-        .clone_box();
+        .clone();
 }
 
 /// Selects the best child node using the UCB1 (Upper Confidence Bound) formula.
